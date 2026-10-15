@@ -1,0 +1,66 @@
+diff --git a/dist/amll-core.cjs b/dist/amll-core.cjs
+index fbd090aa45196ed1ba08ac4be703e227fae547f2..0bdfe8ad43394cb3bf9e9bef99633e52c94ea5ff 100644
+--- a/dist/amll-core.cjs
++++ b/dist/amll-core.cjs
+@@ -6778,6 +6778,7 @@ const WHITESPACE_RE = /\s/g;
+ * @param words 输入的单词数组
+ * @returns 重新分组后的单词数组
+ */
++const graphemeSegmenter = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function" ? new Intl.Segmenter(void 0, { granularity: "grapheme" }) : void 0;
+ function chunkAndSplitLyricWords(words) {
+ 	const result = [];
+ 	let currentGroup = [];
+@@ -6864,17 +6865,17 @@ function chunkAndSplitLyricWords(words) {
+ 			}
+ 			nonSpaceIndex++;
+ 			if (isCJK(part) && part.length > 1 && romanTrimmed.length === 0) {
+-				const chars = part.split("");
++				const chars = graphemeSegmenter ? Array.from(graphemeSegmenter.segment(part), (s) => s.segment) : Array.from(part);
+ 				for (const char of chars) {
+ 					const startTime = w.startTime + currentOffset * timePerUnit;
+ 					processAtom({
+ 						word: char,
+ 						romanWord: "",
+ 						startTime,
+-						endTime: startTime + timePerUnit,
++						endTime: startTime + char.length * timePerUnit,
+ 						obscene
+ 					});
+-					currentOffset += 1;
++					currentOffset += char.length;
+ 				}
+ 			} else {
+ 				const partRealLen = part.length;
+diff --git a/dist/amll-core.mjs b/dist/amll-core.mjs
+index b38e570ef34f599d6bbd2e3bdd5191bcc51d5f34..f1c519f032cf64d4013e775a88ad8e7a3d0f3a97 100644
+--- a/dist/amll-core.mjs
++++ b/dist/amll-core.mjs
+@@ -6745,6 +6745,7 @@ const WHITESPACE_RE = /\s/g;
+ * @param words 输入的单词数组
+ * @returns 重新分组后的单词数组
+ */
++const graphemeSegmenter = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function" ? new Intl.Segmenter(void 0, { granularity: "grapheme" }) : void 0;
+ function chunkAndSplitLyricWords(words) {
+ 	const result = [];
+ 	let currentGroup = [];
+@@ -6831,17 +6832,17 @@ function chunkAndSplitLyricWords(words) {
+ 			}
+ 			nonSpaceIndex++;
+ 			if (isCJK(part) && part.length > 1 && romanTrimmed.length === 0) {
+-				const chars = part.split("");
++				const chars = graphemeSegmenter ? Array.from(graphemeSegmenter.segment(part), (s) => s.segment) : Array.from(part);
+ 				for (const char of chars) {
+ 					const startTime = w.startTime + currentOffset * timePerUnit;
+ 					processAtom({
+ 						word: char,
+ 						romanWord: "",
+ 						startTime,
+-						endTime: startTime + timePerUnit,
++						endTime: startTime + char.length * timePerUnit,
+ 						obscene
+ 					});
+-					currentOffset += 1;
++					currentOffset += char.length;
+ 				}
+ 			} else {
+ 				const partRealLen = part.length;
