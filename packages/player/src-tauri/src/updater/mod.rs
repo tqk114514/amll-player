@@ -18,9 +18,6 @@ pub mod install;
 const UPDATE_ENDPOINT: &str =
     "https://github.com/tqk114514/amll-player/releases/download/main-player-dev/latest.json";
 
-/// minisign 公钥(base64),与 CI 打包时使用的签名密钥对配套
-const UPDATER_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYzMDQ4M0YwOEEyNjFDQjAKUldTd0hDYUs4SU1FWTdkdFRVb0RzTk9rVVBPWkJBZzBPMVJ2cDNIM3oxU1huU1Y2cENqVDBXNmkK";
-
 const USER_AGENT: &str = concat!("amll-player/", env!("CARGO_PKG_VERSION"));
 
 /// 分块下载的并发连接数
@@ -98,6 +95,7 @@ pub async fn update_download_install<R: Runtime>(
     let url = entry.url.clone();
     let signature = entry.signature.clone();
     let version = release.version.clone();
+    let pubkey = read_pubkey(&app)?;
 
     let temp_dir = std::env::temp_dir().join(format!("amll-updater-{version}"));
     std::fs::create_dir_all(&temp_dir)
@@ -129,10 +127,22 @@ pub async fn update_download_install<R: Runtime>(
 
     info!("更新包下载完成,校验签名…");
     let data = std::fs::read(&dest).with_context(|| format!("读取更新包 {dest:?} 失败"))?;
-    install::verify_signature(&data, &signature).context("更新包签名校验失败")?;
+    install::verify_signature(&data, &signature, &pubkey).context("更新包签名校验失败")?;
     info!("签名校验通过,开始安装 {version}");
 
     install::run_install(&app, &dest).await.into_ta_result()
+}
+
+/// 从 tauri.conf.json 的 plugins.updater 段读取 minisign 公钥,
+/// 与 CI 打包时使用的签名密钥对配套
+fn read_pubkey<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<String> {
+    let Some(serde_json::Value::Object(updater)) = app.config().plugins.0.get("updater") else {
+        bail!("tauri.conf.json 缺少 plugins.updater 配置段");
+    };
+    let Some(serde_json::Value::String(pubkey)) = updater.get("pubkey") else {
+        bail!("plugins.updater 配置缺少 pubkey");
+    };
+    Ok(pubkey.clone())
 }
 
 async fn fetch_latest() -> anyhow::Result<LatestRelease> {

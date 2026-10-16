@@ -1,17 +1,19 @@
 //! 更新包验签与各平台安装逻辑。
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use tauri::{AppHandle, Runtime};
 use tracing::*;
 
-use super::UPDATER_PUBKEY;
-
 /// 校验下载内容的 minisign 签名
-pub fn verify_signature(data: &[u8], signature_base64: &str) -> anyhow::Result<()> {
+pub fn verify_signature(
+    data: &[u8],
+    signature_base64: &str,
+    pubkey_base64: &str,
+) -> anyhow::Result<()> {
     use base64::Engine;
 
     let pubkey_bytes = base64::engine::general_purpose::STANDARD
-        .decode(UPDATER_PUBKEY)
+        .decode(pubkey_base64)
         .context("解码更新公钥失败")?;
     let pubkey_text = String::from_utf8(pubkey_bytes).context("更新公钥不是有效的 UTF-8")?;
     let public_key =
@@ -43,11 +45,13 @@ pub fn detect_installer_kind(product_name: &str) -> anyhow::Result<Option<&'stat
     }
     #[cfg(target_os = "linux")]
     {
+        let _ = product_name;
         // AppImage 运行时会设置 APPIMAGE 环境变量;deb/rpm 安装暂不支持自动更新
         return Ok(std::env::var_os("APPIMAGE").map(|_| "appimage"));
     }
     #[cfg(target_os = "macos")]
     {
+        let _ = product_name;
         Ok(None)
     }
 }
@@ -75,7 +79,7 @@ pub async fn run_install<R: Runtime>(
         } else if infer::archive::is_msi(&bytes) {
             WindowsInstaller::Msi
         } else {
-            bail!("更新包格式无法识别,已取消安装");
+            anyhow::bail!("更新包格式无法识别,已取消安装");
         };
         if sniffed != detected {
             warn!("注册表检测的安装方式与更新包类型不一致,以更新包类型为准");
@@ -121,7 +125,7 @@ pub async fn run_install<R: Runtime>(
         info!("启动安装器: {file:?} {parameters}");
         let result = unsafe { ShellExecuteW(None, w!("open"), &file, &HSTRING::from(parameters), None, SW_SHOW) };
         if result.0 as isize <= 32 {
-            bail!("启动安装器失败 (ShellExecuteW 返回 {result:?})");
+            anyhow::bail!("启动安装器失败 (ShellExecuteW 返回 {result:?})");
         }
         // 安装器需要本进程退出后才能替换文件,这里直接结束应用
         std::process::exit(0);
@@ -142,7 +146,7 @@ pub async fn run_install<R: Runtime>(
     #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
     {
         let _ = (app, product_name, download_path);
-        bail!("当前平台不支持自动更新")
+        anyhow::bail!("当前平台不支持自动更新")
     }
 }
 

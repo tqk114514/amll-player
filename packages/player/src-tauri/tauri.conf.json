@@ -26,6 +26,11 @@
 	"productName": "AMLL Player",
 	"version": "0.0.1",
 	"identifier": "net.stevexmh.amllplayer",
+	"plugins": {
+		"updater": {
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYzMDQ4M0YwOEEyNjFDQjAKUldTd0hDYUs4SU1FWTdkdFRVb0RzTk9rVVBPWkJBZzBPMVJ2cDNIM3oxU1huU1Y2cENqVDBXNmkK"
+		}
+	},
 	"app": {
 		"withGlobalTauri": true,
 		"windows": [],
