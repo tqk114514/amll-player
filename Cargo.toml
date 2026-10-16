@@ -11,3 +11,8 @@ opt-level = 3
 codegen-units = 1
 lto = true
 panic = "abort"
+
+[patch.crates-io]
+# 修复 proc-macro-error2 的 E0365 future-incompat(pub use proc_macro 重导出),
+# 上游尚未发布修复版,上游发版后可移除本段与 patches/proc-macro-error2 目录
+proc-macro-error2 = { path = "patches/proc-macro-error2" }
