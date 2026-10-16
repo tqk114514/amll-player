@@ -373,10 +373,15 @@ async fn install_macos_bundle(download_path: &std::path::Path) -> anyhow::Result
             let mut entry = entry.context("遍历更新包失败")?;
             entry.unpack(&staged_dir).context("解包更新内容失败")?;
         }
-        std::fs::read_dir(&staged_dir)?
-            .find_map(|entry| Some(entry.ok()?.path()))
-            .find(|path| path.is_dir() && path.extension().is_some_and(|ext| ext == "app"))
-            .context("更新包中未找到 .app 应用目录")
+        let mut staged_app = None;
+        for entry in std::fs::read_dir(&staged_dir).context("无法读取暂存目录")? {
+            let path = entry.context("读取暂存目录条目失败")?.path();
+            if path.is_dir() && path.extension().is_some_and(|ext| ext == "app") {
+                staged_app = Some(path);
+                break;
+            }
+        }
+        staged_app.context("更新包中未找到 .app 应用目录")
     })();
     let staged_app = match unpack_result {
         Ok(staged_app) => staged_app,
