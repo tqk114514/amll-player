@@ -7,8 +7,6 @@ windows = ["main"]
 platforms = ["macOS", "windows", "linux"]
 
 [[permissions]]
-identifier = "updater:default"
-[[permissions]]
 identifier = "global-shortcut:default"
 [[permissions]]
 identifier = "global-shortcut:allow-is-registered"

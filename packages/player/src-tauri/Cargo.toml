@@ -89,6 +89,8 @@ webpki-roots = "0.26"
 objc2 = "^0.6"
 objc2-avf-audio = "^0.3"
 tauri-plugin-macos-fps = "0.1.0"
+flate2 = "1"
+tar = "0.4"
 
 [target.'cfg(target_os = "ios")'.dependencies]
 objc2 = "^0.6"
@@ -113,8 +115,8 @@ windows = { version = "0.62", features = [
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = { version = "2" }
-tauri-plugin-updater = { version = "2" }
 tauri-plugin-window-state = "2"
+minisign-verify = "0.2"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

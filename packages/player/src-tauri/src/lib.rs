@@ -6,8 +6,6 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[cfg(target_os = "android")]
 pub(crate) static ANDROID_NDK_READY: std::sync::OnceLock<()> = std::sync::OnceLock::new();
 
-#[cfg(not(mobile))]
-use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, Runtime, path::BaseDirectory};
 use tokio::sync::RwLock;
 use tracing::*;
@@ -30,6 +28,8 @@ mod window;
 
 #[cfg(desktop)]
 mod extension_window;
+#[cfg(desktop)]
+mod updater;
 
 #[cfg(target_os = "windows")]
 mod taskbar_lyric;
@@ -207,21 +207,6 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder.plugin(tauri_plugin_macos_fps::init());
 
-    #[cfg(not(mobile))]
-    let pubkey = {
-        if let Some(Value::Object(updater_config)) = context.config().plugins.0.get("updater") {
-            if let Some(Value::String(pubkey)) = updater_config.get("pubkey") {
-                pubkey.clone()
-            } else {
-                "".into()
-            }
-        } else {
-            "".into()
-        }
-    };
-    #[cfg(not(mobile))]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().pubkey(pubkey).build());
-
     #[cfg(mobile)]
     {
         context
@@ -257,6 +242,10 @@ pub fn run() {
             music_info::read_local_music_metadata,
             music_info::save_cover_from_path,
             restart_app,
+            #[cfg(desktop)]
+            updater::check_update,
+            #[cfg(desktop)]
+            updater::update_download_install,
             ttml_db::sync_lyrics,
             ttml_db::search_lyrics,
             ttml_db::get_lyric_detail,
