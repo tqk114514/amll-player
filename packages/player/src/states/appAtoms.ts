@@ -171,10 +171,13 @@ export const availableLanguagesAtom = atom((get) => {
 		})
 		.filter((item) => item.label);
 
-	languages.push({
-		label: i18n.t("page.settings.general.displayLanguage.cimode", "本地化 ID"),
-		value: "cimode",
-	});
+	// i18next 的 cimode 会把所有文案渲染为键名,仅供开发环境检查词条覆盖,不在正式构建里展示
+	if (import.meta.env.DEV) {
+		languages.push({
+			label: i18n.t("page.settings.general.displayLanguage.cimode", "本地化 ID"),
+			value: "cimode",
+		});
+	}
 
 	return languages;
 });

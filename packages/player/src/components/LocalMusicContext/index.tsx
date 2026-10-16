@@ -258,6 +258,12 @@ const LyricContext: FC = () => {
 export const LocalMusicContext: FC = () => {
 	const store = useStore();
 	const { t } = useTranslation();
+	// 语言切换会导致 t 的身份变化,主初始化 effect 不依赖 t(经 ref 读取),
+	// 否则切语言会重建 PlayQueueManager 并触发 restore 的 playAudio+pauseAudio,打断播放
+	const tRef = useRef(t);
+	useLayoutEffect(() => {
+		tRef.current = t;
+	}, [t]);
 	const firstPlay = useRef(true);
 	const [musicPlaying, setMusicPlaying] = useAtom(musicPlayingAtom);
 	const lastSyncRef = useRef({
@@ -510,7 +516,10 @@ export const LocalMusicContext: FC = () => {
 			onRequestOpenMenuAtom,
 			toEmit(() => {
 				toast.info(
-					t("amll.openMenuViaRightClick", "请右键歌词页任意位置来打开菜单哦！"),
+					tRef.current(
+						"amll.openMenuViaRightClick",
+						"请右键歌词页任意位置来打开菜单哦！",
+					),
 				);
 			}),
 		);
@@ -586,7 +595,7 @@ export const LocalMusicContext: FC = () => {
 
 				case "loadError": {
 					toast.error(
-						t("amll.loadAudioError", "播放后端加载音频失败\n{error}", {
+						tRef.current("amll.loadAudioError", "播放后端加载音频失败\n{error}", {
 							error: evtData.data.error,
 						}),
 						{},
@@ -625,7 +634,7 @@ export const LocalMusicContext: FC = () => {
 			store.set(onChangeVolumeAtom, doNothing);
 			store.set(onRequestOpenMenuAtom, doNothing);
 		};
-	}, [store, t]);
+	}, [store]);
 
 	return (
 		<>
