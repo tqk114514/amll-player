@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Update } from "@tauri-apps/plugin-updater";
 import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import i18n from "../i18n";
 import type { PlayQueueManager } from "../utils/play-queue-manager.ts";
+import type { UpdateInfo } from "./updater";
 
 export enum DarkMode {
 	Auto = "auto",
@@ -96,7 +96,7 @@ export const wsProtocolConnectedAddrsAtom = atom(new Set<string>());
 
 export const isCheckingUpdateAtom = atom(false);
 
-export const updateInfoAtom = atom<Update | false>(false);
+export const updateInfoAtom = atom<UpdateInfo | false>(false);
 
 export const autoUpdateAtom = atomWithStorage("amll-player.autoUpdate", true);
 

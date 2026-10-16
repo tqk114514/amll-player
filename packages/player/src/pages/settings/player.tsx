@@ -51,7 +51,7 @@ import {
 	type TextProps,
 } from "@radix-ui/themes";
 import { getVersion } from "@tauri-apps/api/app";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { platform } from "@tauri-apps/plugin-os";
 import chalk from "chalk";
@@ -88,6 +88,7 @@ import {
 	updateInfoAtom,
 } from "../../states/appAtoms.ts";
 import { restartApp } from "../../utils/player.ts";
+import type { DownloadEvent } from "../../states/updater";
 import styles from "./index.module.css";
 
 const SettingEntry: FC<
@@ -1373,60 +1374,78 @@ const AboutSettings = () => {
 								);
 								let contentLength: number | undefined;
 								let receivedLength = 0;
+								let lastSpeedSampleAt = 0;
+								let lastSpeedSampleBytes = 0;
+								let speedBytesPerSec = 0;
 								function getProgressSizeText() {
 									const rec = `${(receivedLength / 1024 / 1024).toFixed(2)} MiB`;
+									const speed = `${(speedBytesPerSec / 1024 / 1024).toFixed(2)} MiB/s`;
 									if (contentLength === undefined) {
-										return `(${rec})`;
+										return `(${rec}) (${speed})`;
 									}
 									const total = `${(contentLength / 1024 / 1024).toFixed(
 										2,
 									)} MiB`;
 									return `(${rec} / ${total}) (${(
 										(receivedLength / contentLength) * 100
-									).toFixed(1)}%)`;
+									).toFixed(1)}%) (${speed})`;
 								}
 								const getDownloadMessage = (progressText: string) =>
 									t("page.about.downloading", "正在下载更新…… {progressText}", {
 										progressText,
 									});
-								try {
-									await updateInfo.downloadAndInstall((evt) => {
-										console.log(UPDATER_LOG_TAG, "更新事件", evt.event);
-										switch (evt.event) {
-											case "Started": {
-												contentLength = evt.data.contentLength;
-												toast.update(toastId, {
-													render: getDownloadMessage(getProgressSizeText()),
-												});
-												break;
-											}
-											case "Progress": {
-												receivedLength += evt.data.chunkLength;
-												toast.update(toastId, {
-													render: getDownloadMessage(getProgressSizeText()),
-													progress:
-														contentLength === undefined
-															? null
-															: receivedLength / contentLength,
-												});
-												break;
-											}
-											case "Finished":
-												toast.update(toastId, {
-													render: t(
-														"page.about.installing",
-														"正在安装更新，将会自动重启，请稍后……",
-													),
-													progress: null,
-												});
-												// Windows 上 updater 插件运行安装器后会自行退出应用,
-												// 此处再触发重启会与安装流程竞争,导致安装被中断
-												if (platform() !== "windows") {
-													setTimeout(restartApp, 1000);
-												}
-												break;
+								const channel = new Channel<DownloadEvent>();
+								channel.onmessage = (event) => {
+									console.log(UPDATER_LOG_TAG, "更新事件", event.event);
+									const now = performance.now();
+									switch (event.event) {
+										case "started": {
+											contentLength = event.total;
+											receivedLength = event.received;
+											lastSpeedSampleAt = now;
+											lastSpeedSampleBytes = event.received;
+											toast.update(toastId, {
+												render: getDownloadMessage(getProgressSizeText()),
+												progress: 0,
+											});
+											break;
 										}
-									});
+										case "progress": {
+											const elapsed = now - lastSpeedSampleAt;
+											if (elapsed > 0) {
+												speedBytesPerSec =
+													((event.received - lastSpeedSampleBytes) / elapsed) *
+													1000;
+											}
+											receivedLength = event.received;
+											lastSpeedSampleAt = now;
+											lastSpeedSampleBytes = event.received;
+											contentLength = event.total;
+											toast.update(toastId, {
+												render: getDownloadMessage(getProgressSizeText()),
+												progress:
+													event.total === 0 ? null : event.received / event.total,
+											});
+											break;
+										}
+										case "finished":
+											toast.update(toastId, {
+												render: t(
+													"page.about.installing",
+													"正在安装更新，将会自动重启，请稍后……",
+												),
+												progress: null,
+											});
+											// Windows 上后端会启动安装器并自行退出应用,
+											// 此处再触发重启会与安装流程竞争,导致安装被中断
+											if (platform() !== "windows") {
+												setTimeout(restartApp, 1000);
+											}
+											break;
+									}
+								};
+								try {
+									await invoke("update_download_install", { channel });
 								} catch (error) {
 									console.error(UPDATER_LOG_TAG, "更新安装失败", error);
 									toast.update(toastId, {
