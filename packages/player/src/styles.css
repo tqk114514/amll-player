@@ -3,6 +3,12 @@
 @import "@radix-ui/themes/styles.css" layer(radix);
 
 @layer global {
+	/* 收敛弹层阴影:Radix 默认 --shadow-5 为描边+60px 环境晕+32px 投影三层堆叠,
+	   在透明窗口与彩色背景上呈现明显的分层光晕,改为描边+单层投影 */
+	.radix-themes {
+		--shadow-5: 0 0 0 1px var(--gray-a6), 0 8px 24px -4px var(--black-a6);
+	}
+
 	:root {
 		--amll-font-family:
 			-apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
