@@ -504,6 +504,8 @@ export const LocalMusicContext: FC = () => {
 				});
 			}),
 		);
+		// musicVolumeAtom 持久化于 localStorage,而音频线程音量初始为 1.0,启动时需主动同步
+		emitAudioThread("setVolume", { volume: store.get(musicVolumeAtom) });
 		store.set(
 			onRequestOpenMenuAtom,
 			toEmit(() => {

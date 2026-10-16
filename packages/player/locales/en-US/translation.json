@@ -144,7 +144,8 @@
 			"loadingContributors": "Loading contributors…",
 			"newVersion": "Available update from {currentVersion} to {nextVersion}",
 			"subtitle": "About",
-			"updating": "Player will restart after update, hold on a second...."
+			"updating": "Player will restart after update, hold on a second....",
+			"updateFailed": "Update failed: {error}"
 		},
 		"amll-dev": {
 			"title": "Apple Music Like Lyrics Developer Page",

@@ -54,6 +54,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { platform } from "@tauri-apps/plugin-os";
+import chalk from "chalk";
 import { atom, useAtom, useAtomValue, type WritableAtom } from "jotai";
 import { loadable } from "jotai/utils";
 import React, {
@@ -1170,17 +1171,17 @@ interface Contributor {
 	url: string;
 }
 
+const UPDATER_LOG_TAG = chalk.bgHex("#FFAA00").hex("#FFFFFF")(" UPDATER ");
+
 const UPSTREAM_REPO = "amll-dev/amll-player";
 const FORK_REPO = "tqk114514/amll-player";
-const FORK_EXCLUDE_REPOS = [UPSTREAM_REPO];
 
-const ContributorsSection: FC<{
-	repo: string;
-	title: ReactNode;
-	excludeRepos?: string[];
-}> = ({ repo, title, excludeRepos }) => {
+const ContributorsSection: FC = () => {
 	const { t } = useTranslation();
-	const [contributors, setContributors] = useState<Contributor[]>([]);
+	const [upstreamContributors, setUpstreamContributors] = useState<
+		Contributor[]
+	>([]);
+	const [forkContributors, setForkContributors] = useState<Contributor[]>([]);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
@@ -1209,14 +1210,16 @@ const ContributorsSection: FC<{
 			};
 
 			try {
-				const [list, excludedLists] = await Promise.all([
-					fetchRepo(repo),
-					Promise.all((excludeRepos ?? []).map((r) => fetchRepo(r))),
+				const [upstreamList, forkList] = await Promise.all([
+					fetchRepo(UPSTREAM_REPO),
+					fetchRepo(FORK_REPO),
 				]);
-				const excludedLogins = new Set(
-					excludedLists.flat().map((c) => c.login),
+				// fork 与上游共享 git 历史,contributors API 会把上游成员一并返回,按差集展示分支自身新增的贡献者
+				const upstreamLogins = new Set(upstreamList.map((c) => c.login));
+				setUpstreamContributors(upstreamList);
+				setForkContributors(
+					forkList.filter((c) => !upstreamLogins.has(c.login)),
 				);
-				setContributors(list.filter((c) => !excludedLogins.has(c.login)));
 			} catch (error) {
 				console.error("Failed to fetch contributors:", error);
 			} finally {
@@ -1225,7 +1228,7 @@ const ContributorsSection: FC<{
 		};
 
 		fetchData();
-	}, [repo, excludeRepos]);
+	}, []);
 
 	if (loading) {
 		return (
@@ -1235,7 +1238,7 @@ const ContributorsSection: FC<{
 		);
 	}
 
-	if (contributors.length === 0) {
+	if (upstreamContributors.length === 0 && forkContributors.length === 0) {
 		return null;
 	}
 
@@ -1275,15 +1278,39 @@ const ContributorsSection: FC<{
 	);
 
 	return (
-			<Box my="4">
-				<SubTitle my="2">{title}</SubTitle>
-			<Grid
-				style={{ gridTemplateColumns: "repeat(auto-fill, minmax(20rem, 1fr))" }}
-				gap="3"
-				my="2"
-			>
-				{contributors.map(renderContributorCard)}
-			</Grid>
+		<Box my="4">
+			{upstreamContributors.length > 0 && (
+				<>
+					<SubTitle my="2">
+						<Trans i18nKey="page.about.contributorsTitle">贡献者</Trans>
+					</SubTitle>
+					<Grid
+						style={{
+							gridTemplateColumns: "repeat(auto-fill, minmax(20rem, 1fr))",
+						}}
+						gap="3"
+						my="2"
+					>
+						{upstreamContributors.map(renderContributorCard)}
+					</Grid>
+				</>
+			)}
+			{forkContributors.length > 0 && (
+				<>
+					<SubTitle my="2">
+						<Trans i18nKey="page.about.forkContributorsTitle">分支贡献者</Trans>
+					</SubTitle>
+					<Grid
+						style={{
+							gridTemplateColumns: "repeat(auto-fill, minmax(20rem, 1fr))",
+						}}
+						gap="3"
+						my="2"
+					>
+						{forkContributors.map(renderContributorCard)}
+					</Grid>
+				</>
+			)}
 		</Box>
 	);
 };
@@ -1310,19 +1337,7 @@ const AboutSettings = () => {
 					由 SteveXMH 及其所有 Github 协作者共同开发
 				</Trans>
 			</Text>
-			<ContributorsSection
-				repo={UPSTREAM_REPO}
-				title={
-					<Trans i18nKey="page.about.contributorsTitle">贡献者</Trans>
-				}
-			/>
-			<ContributorsSection
-				repo={FORK_REPO}
-				excludeRepos={FORK_EXCLUDE_REPOS}
-				title={
-					<Trans i18nKey="page.about.forkContributorsTitle">分支贡献者</Trans>
-				}
-			/>
+			<ContributorsSection />
 			<Suspense>
 				{updateInfo && (
 					<>
@@ -1348,7 +1363,7 @@ const AboutSettings = () => {
 						<Button
 							disabled={updating}
 							loading={updating}
-							onClick={() => {
+							onClick={async () => {
 								setUpdating(true);
 								const toastId = toast.loading(
 									t(
@@ -1374,38 +1389,55 @@ const AboutSettings = () => {
 									t("page.about.downloading", "正在下载更新…… {progressText}", {
 										progressText,
 									});
-								updateInfo.downloadAndInstall((evt) => {
-									switch (evt.event) {
-										case "Started": {
-											contentLength = evt.data.contentLength;
-											toast.update(toastId, {
-												render: getDownloadMessage(getProgressSizeText()),
-											});
-											break;
+								try {
+									await updateInfo.downloadAndInstall((evt) => {
+										console.log(UPDATER_LOG_TAG, "更新事件", evt.event);
+										switch (evt.event) {
+											case "Started": {
+												contentLength = evt.data.contentLength;
+												toast.update(toastId, {
+													render: getDownloadMessage(getProgressSizeText()),
+												});
+												break;
+											}
+											case "Progress": {
+												receivedLength += evt.data.chunkLength;
+												toast.update(toastId, {
+													render: getDownloadMessage(getProgressSizeText()),
+													progress:
+														contentLength === undefined
+															? null
+															: receivedLength / contentLength,
+												});
+												break;
+											}
+											case "Finished":
+												toast.update(toastId, {
+													render: t(
+														"page.about.installing",
+														"正在安装更新，将会自动重启，请稍后……",
+													),
+													progress: null,
+												});
+												// Windows 上 updater 插件运行安装器后会自行退出应用,
+												// 此处再触发重启会与安装流程竞争,导致安装被中断
+												if (platform() !== "windows") {
+													setTimeout(restartApp, 1000);
+												}
+												break;
 										}
-										case "Progress": {
-											receivedLength += evt.data.chunkLength;
-											toast.update(toastId, {
-												render: getDownloadMessage(getProgressSizeText()),
-												progress:
-													contentLength === undefined
-														? null
-														: receivedLength / contentLength,
-											});
-											break;
-										}
-										case "Finished":
-											toast.update(toastId, {
-												render: t(
-													"page.about.installing",
-													"正在安装更新，将会自动重启，请稍后……",
-												),
-												progress: null,
-											});
-											setTimeout(restartApp, 1000);
-											break;
-									}
-								});
+									});
+								} catch (error) {
+									console.error(UPDATER_LOG_TAG, "更新安装失败", error);
+									toast.update(toastId, {
+										render: t("page.about.updateFailed", "更新失败：{error}", {
+											error: String(error),
+										}),
+										type: "error",
+										autoClose: false,
+									});
+									setUpdating(false);
+								}
 							}}
 						>
 							<Trans i18nKey="page.about.installUpdate">更新并安装</Trans>
