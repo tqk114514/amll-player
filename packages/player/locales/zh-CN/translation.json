@@ -136,6 +136,7 @@
 	"page": {
 		"about": {
 			"contributorsTitle": "贡献者",
+			"forkContributorsTitle": "分支贡献者",
 			"credits": "由 SteveXMH 及其所有 Github 协作者共同开发",
 			"downloading": "正在下载更新…… {progressText}",
 			"installing": "正在安装更新，将会自动重启，请稍后……",

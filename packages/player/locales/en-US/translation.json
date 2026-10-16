@@ -136,6 +136,7 @@
 	"page": {
 		"about": {
 			"contributorsTitle": "Contributors",
+			"forkContributorsTitle": "Fork Contributors",
 			"credits": "Made by SteveXMH and all Contributors from GitHub",
 			"downloading": "Downloading updates…… {progressText}",
 			"installing": "Installing update, player will restart, wait a minute...",

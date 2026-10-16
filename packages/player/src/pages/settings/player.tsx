@@ -1170,37 +1170,53 @@ interface Contributor {
 	url: string;
 }
 
-const ContributorsSection: FC = () => {
+const UPSTREAM_REPO = "amll-dev/amll-player";
+const FORK_REPO = "tqk114514/amll-player";
+const FORK_EXCLUDE_REPOS = [UPSTREAM_REPO];
+
+const ContributorsSection: FC<{
+	repo: string;
+	title: ReactNode;
+	excludeRepos?: string[];
+}> = ({ repo, title, excludeRepos }) => {
 	const { t } = useTranslation();
 	const [contributors, setContributors] = useState<Contributor[]>([]);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
 		const fetchData = async () => {
-			try {
+			const fetchRepo = async (target: string): Promise<Contributor[]> => {
 				const response = await fetch(
-					"https://api.github.com/repos/amll-dev/amll-player/contributors?per_page=100&anon=true",
+					`https://api.github.com/repos/${target}/contributors?per_page=100&anon=true`,
 				);
-				if (response.ok) {
-					const data = await response.json();
-					if (Array.isArray(data)) {
-						const list: Contributor[] = data
-							.filter(
-								(item: any) =>
-									item.login &&
-									item.login !== "type-bot" &&
-									item.type !== "Bot" &&
-									!item.login.endsWith("[bot]"),
-							)
-							.map((item: any) => ({
-								id: item.id,
-								login: item.login,
-								avatar: item.avatar_url || "",
-								url: item.html_url || `https://github.com/${item.login}`,
-							}));
-						setContributors(list);
-					}
-				}
+				if (!response.ok) return [];
+				const data = await response.json();
+				if (!Array.isArray(data)) return [];
+				return data
+					.filter(
+						(item: any) =>
+							item.login &&
+							item.login !== "type-bot" &&
+							item.type !== "Bot" &&
+							!item.login.endsWith("[bot]"),
+					)
+					.map((item: any) => ({
+						id: item.id,
+						login: item.login,
+						avatar: item.avatar_url || "",
+						url: item.html_url || `https://github.com/${item.login}`,
+					}));
+			};
+
+			try {
+				const [list, excludedLists] = await Promise.all([
+					fetchRepo(repo),
+					Promise.all((excludeRepos ?? []).map((r) => fetchRepo(r))),
+				]);
+				const excludedLogins = new Set(
+					excludedLists.flat().map((c) => c.login),
+				);
+				setContributors(list.filter((c) => !excludedLogins.has(c.login)));
 			} catch (error) {
 				console.error("Failed to fetch contributors:", error);
 			} finally {
@@ -1209,7 +1225,7 @@ const ContributorsSection: FC = () => {
 		};
 
 		fetchData();
-	}, []);
+	}, [repo, excludeRepos]);
 
 	if (loading) {
 		return (
@@ -1259,10 +1275,8 @@ const ContributorsSection: FC = () => {
 	);
 
 	return (
-		<Box my="4">
-			<SubTitle my="2">
-				{t("page.about.contributorsTitle", "贡献者")}
-			</SubTitle>
+			<Box my="4">
+				<SubTitle my="2">{title}</SubTitle>
 			<Grid
 				style={{ gridTemplateColumns: "repeat(auto-fill, minmax(20rem, 1fr))" }}
 				gap="3"
@@ -1296,7 +1310,19 @@ const AboutSettings = () => {
 					由 SteveXMH 及其所有 Github 协作者共同开发
 				</Trans>
 			</Text>
-			<ContributorsSection />
+			<ContributorsSection
+				repo={UPSTREAM_REPO}
+				title={
+					<Trans i18nKey="page.about.contributorsTitle">贡献者</Trans>
+				}
+			/>
+			<ContributorsSection
+				repo={FORK_REPO}
+				excludeRepos={FORK_EXCLUDE_REPOS}
+				title={
+					<Trans i18nKey="page.about.forkContributorsTitle">分支贡献者</Trans>
+				}
+			/>
 			<Suspense>
 				{updateInfo && (
 					<>
