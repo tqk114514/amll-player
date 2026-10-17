@@ -23,7 +23,7 @@ export const checkUpdateAtom = atom(null, async (_get, set) => {
 	set(isCheckingUpdateAtom, true);
 	set(updateInfoAtom, false);
 	try {
-		const update = await invoke<UpdateInfo | null>("update_check");
+		const update = await invoke<UpdateInfo | null>("check_update");
 		console.log(LOG_TAG, "检查更新返回结果", update);
 		set(updateInfoAtom, update || false);
 	} catch (e) {
