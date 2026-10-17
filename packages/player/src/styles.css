@@ -9,6 +9,12 @@
 		--shadow-5: 0 0 0 1px var(--gray-a6);
 	}
 
+	/* 去掉 Toast 的环境阴影:它的阴影会投在下方内容(如关于页的
+	   贡献者卡片)上形成晕染 */
+	.Toastify__toast {
+		--toastify-toast-shadow: none;
+	}
+
 	:root {
 		--amll-font-family:
 			-apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
