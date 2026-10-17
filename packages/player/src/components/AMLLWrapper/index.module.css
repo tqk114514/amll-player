@@ -8,9 +8,10 @@
 	transform-style: flat;
 	pointer-events: none;
 	background-color: #222;
+	/* 关闭:轻微加速下滑离屏 */
 	transition:
 		border-radius 0.25s ease,
-		transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+		transform 0.35s cubic-bezier(0.4, 0, 1, 1);
 	transform: translateY(100%);
 	border-radius: 1em 1em 0 0;
 	overflow: hidden;
@@ -18,9 +19,10 @@
 
 	&.opened {
 		pointer-events: auto;
+		/* 打开:iOS 面板曲线,快速启动后长尾缓停 */
 		transition:
-			border-radius 0.25s 0.25s ease,
-			transform 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+			border-radius 0.25s 0.3s ease,
+			transform 0.55s cubic-bezier(0.32, 0.72, 0, 1);
 		transform: translateY(0%);
 		border-radius: 0 0 0 0;
 	}

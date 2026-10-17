@@ -18,6 +18,7 @@ pub async fn create_common_win<'a>(
     let win = win
         .center()
         .inner_size(800.0, 600.0)
+        .min_inner_size(800.0, 600.0)
         .effects(WindowEffectsConfig {
             effects: vec![Effect::Tabbed, Effect::Mica],
             ..Default::default()
