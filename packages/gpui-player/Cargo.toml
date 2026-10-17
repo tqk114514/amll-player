@@ -1,0 +1,16 @@
+[package]
+name = "gpui-player"
+version = "0.1.0"
+edition = "2024"
+description = "AMLL Player 的 GPUI 前端原型(第一阶段:歌词页手感验证)"
+
+[dependencies]
+gpui-kit = "0.7.3"
+amll-player-core = { path = "../player-core" }
+tokio = { version = "^1", features = ["rt", "sync", "time", "macros"] }
+anyhow = "^1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+serde_json = "^1.0"

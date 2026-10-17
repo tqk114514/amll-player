@@ -128,8 +128,8 @@ pub enum AudioThreadEvent {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioThreadEventMessage<T> {
-    callback_id: String,
-    data: Option<T>,
+    pub callback_id: String,
+    pub data: Option<T>,
 }
 
 impl<T> AudioThreadEventMessage<T> {

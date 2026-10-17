@@ -4,6 +4,7 @@ members = [
 	"./packages/ws-protocol",
 	"./packages/player-core",
 	"./packages/player/src-tauri",
+	"./packages/gpui-player",
 ]
 
 [profile.release]
