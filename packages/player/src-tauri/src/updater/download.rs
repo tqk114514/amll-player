@@ -13,6 +13,8 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tracing::*;
 
+use super::USER_AGENT;
+
 /// 单个分块的最大重试次数
 const CHUNK_RETRY_COUNT: usize = 3;
 /// 每累计这么多字节把断点状态落盘一次
@@ -143,8 +145,14 @@ pub async fn download_file(
     max_connections: usize,
     mut on_progress: impl FnMut(u64, u64) + Send + 'static,
 ) -> anyhow::Result<()> {
-    let client = Arc::new(reqwest::Client::new());
-    let probe = probe_url(&client, url).await?;
+    let client = Arc::new(
+        reqwest::Client::builder()
+            // GitHub API 会拒绝不带 User-Agent 的请求(403)
+            .user_agent(USER_AGENT)
+            .build()
+            .context("构建下载客户端失败")?,
+    );
+    let probe = probe_with_retry(&client, url).await?;
     let total = probe.total;
 
     if !probe.range_supported {
@@ -245,8 +253,31 @@ pub async fn download_file(
     Ok(())
 }
 
-async fn probe_url(client: &reqwest::Client, url: &str) -> anyhow::Result<ProbeResult> {
-    let response = client
+/// 探测请求附带少量重试:GitHub 资产分发偶发 403/5xx(共享出口 IP 的
+/// 临时限流、CDN 节流),稍候重试通常即可恢复
+async fn probe_with_retry(
+    client: &reqwest::Client,
+    url: &str,
+) -> anyhow::Result<ProbeResult> {
+    let mut last_err = None;
+    for attempt in 1..=CHUNK_RETRY_COUNT {
+        if attempt > 1 {
+            let backoff = Duration::from_millis(1000 << (attempt - 1));
+            warn!("下载目标探测失败,{backoff:?} 后进行第 {attempt} 次尝试");
+            tokio::time::sleep(backoff).await;
+        }
+        match probe_url(client, url).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                error!("下载目标探测第 {attempt} 次尝试失败: {e:#}");
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.expect("探测至少执行了一次"))
+}
+
+async fn probe_url(client: &reqwest::Client, url: &str) -> anyhow::Result<ProbeResult> {    let response = client
         .get(url)
         .header(reqwest::header::RANGE, "bytes=0-0")
         .header(reqwest::header::ACCEPT, DOWNLOAD_ACCEPT)

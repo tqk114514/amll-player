@@ -14,7 +14,8 @@ use tracing::*;
 pub mod download;
 pub mod install;
 
-const USER_AGENT: &str = concat!("amll-player/", env!("CARGO_PKG_VERSION"));
+/// GitHub API 要求请求必须携带 User-Agent,否则一律以 403 拒绝
+pub(crate) const USER_AGENT: &str = concat!("amll-player/", env!("CARGO_PKG_VERSION"));
 
 /// 分块下载允许的最大并发连接数,实际按文件大小自动分配
 const DOWNLOAD_CONNECTIONS: usize = 8;
