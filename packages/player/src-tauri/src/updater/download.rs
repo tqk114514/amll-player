@@ -115,6 +115,22 @@ fn persist_state(state: &DownloadState, state_path: &Path) {
     }
 }
 
+/// 按文件大小分配并发连接数:小文件开多连接纯属握手开销浪费,
+/// 大文件才逐步提高,且不超过调用方给定的上限
+fn connections_for(total: u64, max_connections: usize) -> usize {
+    const MIB: u64 = 1024 * 1024;
+    const SMALL_MAX: u64 = MIB;
+    const MEDIUM_MAX: u64 = 8 * MIB;
+    const LARGE_MAX: u64 = 32 * MIB;
+    let wanted = match total {
+        ..=SMALL_MAX => 1,
+        ..=MEDIUM_MAX => 2,
+        ..=LARGE_MAX => 4,
+        _ => 8,
+    };
+    wanted.min(max_connections.max(1))
+}
+
 /// 多连接分块下载 url 到 dest。
 ///
 /// on_progress 会在探测完成后与下载过程中被节流调用,返回前保证汇报一次终态;
@@ -122,7 +138,7 @@ fn persist_state(state: &DownloadState, state_path: &Path) {
 pub async fn download_file(
     url: &str,
     dest: &Path,
-    connections: usize,
+    max_connections: usize,
     mut on_progress: impl FnMut(u64, u64) + Send + 'static,
 ) -> anyhow::Result<()> {
     let client = Arc::new(reqwest::Client::new());
@@ -135,6 +151,7 @@ pub async fn download_file(
         return download_single_stream(response, dest, total, &mut on_progress).await;
     }
 
+    let connections = connections_for(total, max_connections);
     let state_path = state_path(dest);
     let state = load_or_create_state(&state_path, url, probe.etag.as_ref(), total, connections).await?;
     let initial_received = state.chunks.iter().map(|chunk| chunk.received).sum::<u64>();
@@ -441,5 +458,17 @@ mod tests {
         let chunks = split_chunks(1024, 1);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].len(), 1024);
+    }
+
+    #[test]
+    fn connections_scale_with_size() {
+        const MIB: u64 = 1024 * 1024;
+        assert_eq!(connections_for(512 * 1024, 8), 1);
+        assert_eq!(connections_for(4 * MIB, 8), 2);
+        assert_eq!(connections_for(16 * MIB, 8), 4);
+        assert_eq!(connections_for(64 * MIB, 8), 8);
+        // 不超过调用方给定的上限
+        assert_eq!(connections_for(64 * MIB, 2), 2);
+        assert_eq!(connections_for(512 * 1024, 0), 1);
     }
 }

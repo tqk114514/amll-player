@@ -20,7 +20,7 @@ const UPDATE_ENDPOINT: &str =
 
 const USER_AGENT: &str = concat!("amll-player/", env!("CARGO_PKG_VERSION"));
 
-/// 分块下载的并发连接数
+/// 分块下载允许的最大并发连接数,实际按文件大小自动分配
 const DOWNLOAD_CONNECTIONS: usize = 8;
 
 #[derive(Debug, Deserialize)]
