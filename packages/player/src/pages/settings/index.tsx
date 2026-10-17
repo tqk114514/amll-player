@@ -40,6 +40,30 @@ import { PlayerSettingsTab } from "./player.tsx";
 
 const currentPageAtom = atom("player.general");
 
+/**
+ * 只滚动目标元素所在的内容滚动容器。
+ * 不能用 scrollIntoView:它会把所有可滚动祖先(包含自定义标题栏的
+ * 外层容器)一起滚动,导致标题栏与返回按钮被推出屏幕。
+ */
+function scrollContentToElement(elementId: string) {
+	const target = document.getElementById(elementId);
+	if (!target) return;
+
+	let container: HTMLElement | null = target.parentElement;
+	while (container) {
+		const overflowY = getComputedStyle(container).overflowY;
+		if (overflowY === "auto" || overflowY === "scroll") break;
+		container = container.parentElement;
+	}
+	if (!container) return;
+
+	const offset =
+		target.getBoundingClientRect().top -
+		container.getBoundingClientRect().top +
+		container.scrollTop;
+	container.scrollTop = offset;
+}
+
 const loadedExtensionsWithSettingsAtom = atom((get) => {
 	const loadedExtensions = get(loadedExtensionAtom);
 	return loadedExtensions.filter(
@@ -240,7 +264,8 @@ export const Component: FC = () => {
 		if (window.location.hash === "#updater") {
 			setCurrentPage("player.about");
 			setTimeout(
-				() => document.getElementById("updater")?.scrollIntoView(),
+				() =>
+					scrollContentToElement("updater"),
 				100,
 			);
 			history.replaceState(null, "", window.location.pathname);

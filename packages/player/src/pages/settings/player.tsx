@@ -1404,15 +1404,18 @@ const AboutSettings = () => {
 								function getProgressSizeText() {
 									const rec = `${(receivedLength / 1024 / 1024).toFixed(2)} MiB`;
 									const speed = `${(speedBytesPerSec / 1024 / 1024).toFixed(2)} MiB/s`;
+									// total 未知或为 0 时按 0% 处理,避免出现 NaN%
+									const percent = (
+										(receivedLength / (contentLength || 1)) *
+										100
+									).toFixed(1);
 									if (contentLength === undefined) {
 										return `(${rec}) (${speed})`;
 									}
 									const total = `${(contentLength / 1024 / 1024).toFixed(
 										2,
 									)} MiB`;
-									return `(${rec} / ${total}) (${(
-										(receivedLength / contentLength) * 100
-									).toFixed(1)}%) (${speed})`;
+									return `(${rec} / ${total}) (${percent}%) (${speed})`;
 								}
 								const getDownloadMessage = (progressText: string) =>
 									t("page.about.downloading", "正在下载更新…… {progressText}", {
@@ -1448,7 +1451,7 @@ const AboutSettings = () => {
 											toast.update(toastId, {
 												render: getDownloadMessage(getProgressSizeText()),
 												progress:
-													event.total === 0 ? null : event.received / event.total,
+													event.total > 0 ? event.received / event.total : 0,
 											});
 											break;
 										}
