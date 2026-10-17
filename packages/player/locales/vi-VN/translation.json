@@ -1,24 +1,24 @@
 {
 	"amll": {
 		"audioQuality": {
-			"channels": "音频通道数量",
-			"codec": "音频解码器",
-			"sampleFormat": "采样格式",
-			"sampleRate": "采样率",
-			"title": "音频解码信息"
+			"channels": "Số kênh âm thanh",
+			"codec": "Bộ giải mã âm thanh",
+			"sampleFormat": "Định dạng mẫu",
+			"sampleRate": "Tần số lấy mẫu",
+			"title": "Thông tin giải mã âm thanh"
 		},
 		"contextMenu": {
 			"editMusicOverrideMessage": "Chỉnh sửa thông tin bài hát",
 			"exitLyricPage": "Thoát lời bài hát",
 			"forwardSong": "Bài tiếp theo",
-			"openRecorder": "打开捕获面板",
-			"openScreenshotTool": "打开截图工具",
+			"openRecorder": "Mở bảng ghi hình",
+			"openScreenshotTool": "Mở công cụ chụp màn hình",
 			"pauseOrResume": "Tạm dừng / Tiếp tục",
-			"play": "播放",
+			"play": "Phát",
 			"rewindSong": "Bài trước đó",
 			"toggleFullscreen": "Toàn màn hình / Thoát toàn màn hình",
 			"toggleLyrics": "Hiển thị lời bài hát",
-			"windowAlwaysOnTop": "窗口置顶"
+			"windowAlwaysOnTop": "Cửa sổ luôn trên cùng"
 		},
 		"loadAudioError": "Lỗi tải âm thanh từ tệp {error}",
 		"migrationDialog": {
@@ -51,67 +51,67 @@
 		},
 		"openMenuViaRightClick": "Hãy nhấp chuột phải vào bất kỳ chỗ nào trên trang lời bài hát để mở Menu!",
 		"qualityTag": {
-			"hires": "高解析度无损",
-			"lossless": "无损"
+			"hires": "Lossless độ phân giải cao",
+			"lossless": "Lossless"
 		},
 		"ttmlImportDialog": {
-			"noResults": "无结果",
-			"openButtonLabel": "从 AMLL TTML DB 搜索 / 导入歌词",
+			"noResults": "Không có kết quả",
+			"openButtonLabel": "Tìm kiếm / nhập lời bài hát từ AMLL TTML DB",
 			"searchInput": {
-				"placeholder": "搜索歌曲、歌词内容、歌手等……"
+				"placeholder": "Tìm kiếm bài hát, lời bài hát, ca sĩ……"
 			},
-			"supportText": "AMLL TTML DB 是由 AMLL 社区爱好者们一同建设的开源无版权歌词数据库，想为 AMLL TTML DB 贡献歌词吗？前往<1>GitHub 仓库</1>即可知晓提交歌词流程！",
+			"supportText": "AMLL TTML DB là cơ sở dữ liệu lời bài hát không bản quyền mã nguồn mở được xây dựng bởi những người yêu thích trong cộng đồng AMLL. Bạn muốn đóng góp lời bài hát cho AMLL TTML DB? Hãy truy cập <1>GitHub repository</1> để biết cách gửi lời bài hát!",
 			"sync": {
-				"empty": "歌词库为空",
-				"error": "同步出错: {error}",
-				"failed": "同步失败: {error}",
-				"skipped": "歌词库已是最新",
-				"updated": "已更新 {count} 首歌词"
+				"empty": "Thư viện lời bài hát trống",
+				"error": "Lỗi đồng bộ: {error}",
+				"failed": "Đồng bộ thất bại: {error}",
+				"skipped": "Thư viện lời bài hát đã là mới nhất",
+				"updated": "Đã cập nhật {count} lời bài hát"
 			},
-			"tip": "在上方输入搜索关键词，点击候选项即可将歌词内容直接导入到歌词数据中。",
-			"title": "从 AMLL TTML DB 搜索 / 导入歌词"
+			"tip": "Nhập từ khóa tìm kiếm ở phía trên, nhấp vào mục gợi ý để nhập trực tiếp nội dung lời bài hát vào dữ liệu.",
+			"title": "Tìm kiếm / nhập từ AMLL TTML DB"
 		}
 	},
 	"bottom_lyric": {
-		"lyricAuthor": "歌词作者：",
-		"songWriter": "创作者："
+		"lyricAuthor": "Người viết lời：",
+		"songWriter": "Nhà sáng tác："
 	},
 	"common": {
 		"dialog": {
 			"cancel": "Hủy bỏ",
-			"close": "关闭",
+			"close": "Đóng",
 			"confirm": "Xác nhận",
 			"filter": {
-				"all": "全部文件 (*.*)",
-				"js": "JavaScript 文件 (*.js)"
+				"all": "Tất cả các tệp (*.*)",
+				"js": "Tệp JavaScript (*.js)"
 			},
 			"save": "Lưu"
 		},
 		"page": {
 			"back": "Quay lại"
 		},
-		"settings": "设置"
+		"settings": "Cài đặt"
 	},
 	"error": {
-		"backToMainPage": "回到主页",
-		"copyError": "复制错误信息",
-		"desc0": "程序在运行时发生了错误，请尝试刷新页面，如果问题仍然无法解决，请联系开发者。",
-		"desc1": "如果您对程序调试有一定了解，可以在开发者控制台中看到更加准确的错误信息。",
-		"errorDetail": "错误信息",
-		"reloadPage": "刷新页面",
-		"title": "程序发生错误"
+		"backToMainPage": "Về trang chủ",
+		"copyError": "Sao chép thông tin lỗi",
+		"desc0": "Đã xảy ra lỗi khi chương trình đang chạy, hãy thử tải lại trang. Nếu vấn đề vẫn không được giải quyết, hãy liên hệ với nhà phát triển.",
+		"desc1": "Nếu bạn có hiểu biết nhất định về việc gỡ lỗi chương trình, bạn có thể xem thông tin lỗi chính xác hơn trong bảng điều khiển của nhà phát triển.",
+		"errorDetail": "Thông tin lỗi",
+		"reloadPage": "Tải lại trang",
+		"title": "Đã xảy ra lỗi"
 	},
 	"extension": {
 		"error": {
 			"invaildPluginFile": "无效扩展程序文件",
-			"missingDependency": "缺失依赖项",
-			"missingMetadata": "缺失必需元数据",
+			"missingDependency": "Thiếu phần phụ thuộc",
+			"missingMetadata": "Thiếu siêu dữ liệu bắt buộc",
 			"pluginIdConflict": "扩展程序 ID 冲突"
 		},
 		"inject": {
 			"error": {
-				"calloutText": "扩展程序 {id} 在注入组件 / 功能到 {injectPointName} 槽位时发生错误：",
-				"toastText": "扩展程序 {id} 在注入组件 / 功能到 {injectPointName} 槽位时发生错误：\n{error}"
+				"calloutText": "Tiện ích mở rộng {id} gặp lỗi khi chèn thành phần / tính năng vào khe {injectPointName}：",
+				"toastText": "Tiện ích mở rộng {id} gặp lỗi khi chèn thành phần / tính năng vào khe {injectPointName}：\n{error}"
 			}
 		}
 	},
@@ -135,17 +135,21 @@
 	},
 	"page": {
 		"about": {
-			"credits": "Được phát triển bởi SteveXMH và các cộng tác viên khác trên Github\nhttps://github.com/amll-dev/applemusic-like-lyrics",
-			"downloading": "Đang tải xuống bản cập nhật {progressText}",
-			"installing": "Đang cài đặt cập nhật, sẽ tự động khởi động lại, vui lòng chờ...",
+			"credits": "Được phát triển bởi SteveXMH và tất cả những người đóng góp trên GitHub",
+			"downloading": "Đang tải xuống bản cập nhật…… {progressText}",
+			"installing": "Đang cài đặt bản cập nhật, sẽ tự khởi động lại sau khi hoàn tất, vui lòng chờ……",
 			"installUpdate": "Cập nhật và cài đặt",
-			"newVersion": " Có bản cập nhật khả dụng từ {currentVersion} lên {nextVersion}",
-			"subtitle": "Về",
-			"updating": "Đang cập nhật, khi hoàn tất sẽ tự động khởi động lại, vui lòng chờ..."
+			"newVersion": "Có bản cập nhật từ {currentVersion} lên {nextVersion}",
+			"subtitle": "Giới thiệu",
+			"updating": "Đang cập nhật, sẽ tự khởi động lại sau khi hoàn tất, vui lòng chờ……",
+			"contributorsTitle": "Người đóng góp",
+			"forkContributorsTitle": "Người đóng góp của nhánh fork",
+			"loadingContributors": "Đang tải danh sách người đóng góp…",
+			"updateFailed": "Cập nhật thất bại: {error}"
 		},
 		"amll-dev": {
 			"title": "Trang phát triển Apple Music Like Lyrics",
-			"warning": "Nội dung này chỉ dùng cho mục đích phát triển và thử nghiệm, chỉ dành cho tác giả sử dụng, việc sử dụng tùy tiện có thể gây ra những tình huống không lường trước được!"
+			"warning": "Những thứ ở đây dùng cho mục đích phát triển và gỡ lỗi, chỉ để thuận tiện cho tác giả. Sử dụng tùy ý có thể dẫn đến tình huống ngoài dự đoán! (Nội dung trang chỉ có tiếng Trung)"
 		},
 		"main": {
 			"loadingPlaylist": "Đang tải danh sách bài hát",
@@ -157,36 +161,36 @@
 			},
 			"noPlaylistTip": "Không có danh sách phát, hãy tạo một danh sách mới!",
 			"playlistCard": {
-				"createTime": "创建于 {createTime}",
-				"songCount": "{songAmount} 首歌曲"
+				"createTime": "Đã tạo vào {createTime}",
+				"songCount": "{songAmount} bài hát"
 			},
 			"playlistMenu": {
 				"delete": "Xóa danh sách phát",
-				"play": "播放此列表",
-				"playShuffled": "以乱序播放此列表"
+				"play": "Phát danh sách này",
+				"playShuffled": "Phát ngẫu nhiên danh sách này"
 			},
 			"updateAvailableTag": "Có bản cập nhật khả dụng"
 		},
 		"playlist": {
 			"addLocalMusic": {
-				"allFiles": "所有文件",
+				"allFiles": "Tất cả các tệp",
 				"dialog": {
-					"failedDescription": "以下 {count, plural, other {#}} 首歌曲添加失败：",
-					"failedTitle": "部分歌曲导入失败"
+					"failedDescription": "Các bài hát sau đây thêm thất bại ({count, plural, other {#}})：",
+					"failedTitle": "Một số bài hát nhập thất bại"
 				},
 				"filterName": "Tệp âm thanh",
-				"label": "Thêm bài hát từ bộ nhớ",
+				"label": "Thêm bài hát cục bộ",
 				"toast": {
-					"allFailed": "Thêm {errored, plural, other {#}} bài hát thất bại",
-					"parsingMusicMetadata": "Đang phân tích siêu dữ liệu âm nhạc để thêm bài hát ({current, plural, other {#}} / {total, plural, other {#}})",
-					"partiallyFailed": "Đã thêm {succeed, plural, other {#}} bài hát, trong đó {errored, plural, other {#}} bài hát thất bại khi thêm",
+					"allFailed": "Đã thêm thất bại {errored, plural, other {#}} bài hát",
+					"parsingMusicMetadata": "Đang phân tích siêu dữ liệu nhạc để thêm bài hát ({current, plural, other {#}} / {total, plural, other {#}})",
+					"partiallyFailed": "Đã thêm {succeed, plural, other {#}} bài hát, trong đó {errored, plural, other {#}} bài thêm thất bại",
 					"success": "Đã thêm tất cả {count, plural, other {#}} bài hát"
 				}
 			},
 			"cover": {
-				"changeCoverToAuto": "更换成自动封面",
+				"changeCoverToAuto": "Chuyển sang bìa tự động",
 				"mediaFiles": "Tệp phương tiện",
-				"uploadCoverImage": "上传封面图片"
+				"uploadCoverImage": "Tải lên ảnh bìa"
 			},
 			"music": {
 				"dropdown": {
@@ -234,175 +238,175 @@
 		},
 		"search": {
 			"filter": {
-				"albumName": "专辑名 : {keyword}",
-				"artistName": "歌手名 : {keyword}",
+				"albumName": "Tên album : {keyword}",
+				"artistName": "Tên ca sĩ : {keyword}",
 				"candidate": {
-					"albumName": "专辑名 包含 {keyword}",
-					"artistName": "歌手名 包含 {keyword}",
-					"lyricContent": "歌词内容 包含 {keyword}",
-					"playlistName": "播放列表名称 包含 {keyword}",
-					"songName": "歌曲名 包含 {keyword}"
+					"albumName": "Tên album chứa {keyword}",
+					"artistName": "Tên ca sĩ chứa {keyword}",
+					"lyricContent": "Nội dung lời chứa {keyword}",
+					"playlistName": "Tên danh sách phát chứa {keyword}",
+					"songName": "Tên bài hát chứa {keyword}"
 				},
-				"lyricContent": "歌词内容 : {keyword}",
-				"placeholder": "搜索歌单、歌名、歌手等信息……",
-				"playlistName": "播放列表名 : {keyword}",
-				"songName": "歌曲名 : {keyword}"
+				"lyricContent": "Nội dung lời : {keyword}",
+				"placeholder": "Tìm kiếm danh sách phát, bài hát, ca sĩ……",
+				"playlistName": "Tên danh sách phát : {keyword}",
+				"songName": "Tên bài hát : {keyword}"
 			},
-			"noPlaylistResult": "无播放列表结果",
-			"noSongResult": "无歌曲结果",
-			"placeholder": "搜索歌曲、歌手、专辑、歌词、播放列表等信息",
-			"searchingPlaylist": "搜索播放列表中",
-			"searchPlaylistResultAmount": "搜索到 {amount} 个播放列表",
-			"searchSongResultAmount": "搜索到 {amount} 首歌曲"
+			"noPlaylistResult": "Không có kết quả danh sách phát",
+			"noSongResult": "Không có kết quả bài hát",
+			"placeholder": "Tìm kiếm bài hát, ca sĩ, album, lời bài hát, danh sách phát…",
+			"searchingPlaylist": "Đang tìm kiếm danh sách phát",
+			"searchPlaylistResultAmount": "Tìm thấy {amount} danh sách phát",
+			"searchSongResultAmount": "Tìm thấy {amount} bài hát"
 		},
 		"settings": {
 			"general": {
 				"displayLanguage": {
-					"cimode": "ID ngôn ngữ địa phương",
+					"cimode": "ID bản địa hóa",
 					"label": "Ngôn ngữ hiển thị"
 				},
 				"subtitle": "Chung",
 				"theme": {
-					"auto": "自动",
-					"dark": "深色",
-					"description": "选择应用的外观主题",
-					"label": "界面主题",
-					"light": "浅色"
+					"auto": "Tự động",
+					"dark": "Tối",
+					"description": "Chọn giao diện của ứng dụng",
+					"label": "Giao diện",
+					"light": "Sáng"
 				},
 				"windowAlwaysOnTop": {
-					"description": "将应用窗口设置为始终置顶",
-					"label": "启用窗口置顶"
+					"description": "Luôn hiển thị cửa sổ ứng dụng trên cùng",
+					"label": "Luôn trên cùng"
 				}
 			},
 			"lyricAppearance": {
 				"advanceLyricDynamicLyricTime": {
-					"description": "Điều chỉnh thời gian ban đầu của lời bài hát để bắt đầu sớm hơn, giúp cho việc phát bài hát kịp thời (dần dần). Hành vi này tương tự như hiệu ứng được nâng cao trong Apple Music, nhưng trong một số trường hợp sẽ không ảnh hưởng đến việc chuyển đổi lời bài hát ở cuối.",
-					"label": "Thời gian bắt đầu phát lời bài hát sớm hơn"
+					"description": "Đẩy sớm thời gian bắt đầu của dòng lời gốc để hiệu ứng lời bài hát (theo từng từ) bắt đầu phát ngay sau khi cuộn xong. Hành vi này gần với Apple Music hơn, nhưng trong hầu hết trường hợp sẽ khiến phần cuối của dòng lời chưa phát xong đã chuyển sang dòng tiếp theo.",
+					"label": "Đẩy sớm thời gian dòng lời"
 				},
 				"enableLyricLineBlurEffect": {
-					"description": "Ảnh hưởng đến hiệu năng, nếu gặp vấn đề về hiệu suất, có thể thử tắt tùy chọn này. Mặc định được bật.",
+					"description": "Ảnh hưởng đến hiệu năng khá lớn, nếu gặp vấn đề hãy thử tắt mục này. Mặc định bật.",
 					"label": "Bật hiệu ứng làm mờ lời bài hát"
 				},
 				"enableLyricLineScaleEffect": {
-					"description": "Không ảnh hưởng đến hiệu năng, khi phát lời bài hát phía trước sẽ thu nhỏ một chút. Mặc định bật.",
-					"label": "Bật hiệu ứng phóng to/thu nhỏ lời bài hát"
+					"description": "Không ảnh hưởng hiệu năng, các dòng lời không đang phát sẽ thu nhỏ nhẹ. Mặc định bật",
+					"label": "Bật hiệu ứng thu phóng lời bài hát"
 				},
 				"enableLyricLineSpringAnimation": {
-					"description": "Ảnh hưởng đến hiệu năng, nếu gặp vấn đề về hiệu suất, có thể thử tắt tùy chọn này. Mặc định được bật.",
-					"label": "Bật hiệu ứng hoạt hình co giãn dòng lời bài hát"
+					"description": "Ảnh hưởng đến hiệu năng khá lớn, nếu gặp vấn đề hãy thử tắt mục này. Mặc định bật.",
+					"label": "Bật hiệu ứng hoạt ảnh lò xo cho dòng lời"
 				},
 				"lyricFontSize": {
-					"descriptionResponsive": "设置歌词的字体大小",
-					"label": "歌词字体大小",
+					"descriptionResponsive": "Đặt kích thước phông chữ của lời bài hát",
+					"label": "Kích thước phông chữ lời bài hát",
 					"menu": {
-						"extra_large": "极大",
-						"extra_small": "极小",
-						"huge": "超大",
-						"large": "大",
-						"medium": "中",
-						"small": "小",
-						"tiny": "超小"
+						"extra_large": "Cực lớn",
+						"extra_small": "Cực nhỏ",
+						"huge": "To",
+						"large": "Lớn",
+						"medium": "Vừa",
+						"small": "Nhỏ",
+						"tiny": "Rất nhỏ"
 					}
 				},
 				"lyricWordFadeWidth": {
-					"description": "Điều chỉnh độ rộng chuyển đổi dần dần cho từng từ trong lời bài hát, đơn vị là chiều rộng của một ký tự, mặc định là 0.5.\nNếu muốn mô phỏng hiệu ứng của Apple Music cho Android, có thể đặt là 1.\nNếu muốn mô phỏng hiệu ứng của Apple Music cho iPad, có thể đặt là 0.5.\nNếu muốn vô hiệu hóa độ rộng chuyển đổi dần dần cho lời bài hát, có thể đặt là 0.",
-					"label": "Điều chỉnh độ rộng của hiệu ứng làm mờ dần cho từng từ trong lời bài hát"
+					"description": "Điều chỉnh độ rộng chuyển màu của từng từ trong lời theo từng từ, đơn vị là độ rộng của một ký tự toàn giác, mặc định là 0.5.\nMuốn mô phỏng Apple Music cho Android, hãy đặt là 1.\nMuốn mô phỏng Apple Music cho iPad, hãy đặt là 0.5.\nMuốn tắt hiệu ứng chuyển màu của từng từ, hãy đặt là 0.",
+					"label": "Độ rộng chuyển màu từng từ"
 				},
 				"subtitle": "Kiểu lời bài hát"
 			},
 			"lyricBackground": {
 				"backgroundRenderer": {
-					"label": " Nền mờ dần"
+					"label": "Trình kết xuất nền"
 				},
 				"lyricBackgroundColor": {
-					"description": "等同于放入 background 样式的字符串值，默认为 #111111",
-					"label": "CSS 背景属性值"
+					"description": "Tương đương với giá trị chuỗi đặt vào thuộc tính background, mặc định là #111111",
+					"label": "Giá trị thuộc tính nền CSS"
 				},
 				"lyricBackgroundFPS": {
-					"description": "Có ảnh hưởng đến hiệu suất, nhưng thực tế không lớn. Nếu gặp vấn đề về hiệu suất, có thể cân nhắc giảm giá trị này. Mặc định là 60.",
-					"label": "Tần suất khung hình cao nhất"
+					"description": "Ảnh hưởng đến hiệu năng khá lớn nhưng chi phí thực tế không lớn, nếu gặp vấn đề hãy thử giảm giá trị này. Mặc định là 60.",
+					"label": "FPS nền tối đa"
 				},
 				"lyricBackgroundRenderScale": {
-					"description": "Có ảnh hưởng đến hiệu suất, nhưng thực tế không lớn. Nếu gặp vấn đề về hiệu suất, có thể cân nhắc giảm giá trị này. Mặc định là 1, tức là hiển thị mỗi khung hình một lần.",
-					"label": "Tỷ lệ hiển thị nền"
+					"description": "Ảnh hưởng đến hiệu năng khá lớn nhưng chi phí thực tế không lớn, nếu gặp vấn đề hãy thử giảm giá trị này. Mặc định là 1 tức kết xuất theo từng điểm ảnh.",
+					"label": "Tỷ lệ kết xuất nền"
 				},
 				"lyricBackgroundStaticMode": {
-					"description": "Giúp nền giữ nguyên khi chuyển đổi bài hát. Nếu gặp vấn đề về hiệu suất, có thể cân nhắc bật tùy chọn này.\nLưu ý: Bật tùy chọn này có thể làm mất hiệu ứng nền.",
+					"description": "Giữ nền tĩnh trừ khi đổi ảnh bìa khi chuyển bài, nếu gặp vấn đề hiệu năng hãy cân nhắc bật mục này.\nLưu ý: bật mục này sẽ vô hiệu hiệu ứng nền nhấp nháy.",
 					"label": "Chế độ nền tĩnh"
 				},
 				"menu": {
-					"cssBackground": "CSS 背景",
-					"meshGradientRenderer": "网格渐变渲染器",
-					"pixiRenderer": "PixiJS 渲染器"
+					"cssBackground": "Nền CSS",
+					"meshGradientRenderer": "Trình kết xuất lưới gradient",
+					"pixiRenderer": "Trình kết xuất PixiJS"
 				},
-				"subtitle": "Nền của lời bài hát"
+				"subtitle": "Nền lời bài hát"
 			},
 			"lyricContent": {
 				"bottomLyricMode": {
-					"description": "控制歌词底部显示的歌曲创作者及歌词作者信息",
-					"label": "底部信息",
+					"description": "Kiểm soát thông tin nhà sáng tác và người viết lời hiển thị ở phần dưới lời bài hát",
+					"label": "Thông tin dưới cùng",
 					"menu": {
-						"none": "完全不显示",
-						"onlyLyricAuthors": "只显示歌词作者",
-						"onlySongWriters": "只显示创作者",
-						"preferLyricAuthors": "优先显示歌词作者",
-						"preferSongWriters": "优先显示创作者"
+						"none": "Ẩn hoàn toàn",
+						"onlyLyricAuthors": "Chỉ hiển thị người viết lời",
+						"onlySongWriters": "Chỉ hiển thị nhà sáng tác",
+						"preferLyricAuthors": "Ưu tiên hiển thị người viết lời",
+						"preferSongWriters": "Ưu tiên hiển thị nhà sáng tác"
 					}
 				},
 				"enableLyricRomanLine": {
-					"label": "Hiển thị lời bài hát phiên âm"
+					"label": "Hiển thị lời phiên âm"
 				},
 				"enableLyricSwapTransRomanLine": {
-					"description": "Chỉ có hai tùy chọn trên mới có hiệu lực khi được bật",
-					"label": "Bật chức năng hoán đổi giữa lời bài hát và lời dịch"
+					"description": "Chỉ có hiệu lực khi cả hai mục trên được bật",
+					"label": "Bật hoán đổi lời phiên âm và lời dịch"
 				},
-				"enableLyricTranslationLine": "Hiển thị lời bài hát dịch",
+				"enableLyricTranslationLine": "Hiển thị lời dịch",
 				"subtitle": "Nội dung lời bài hát"
 			},
 			"lyricFont": {
 				"fontFamily": {
-					"description": "Tên phông chữ được phân tách bằng dấu phẩy, tương đương với thuộc tính font-family của CSS, để trống sẽ sử dụng giá trị mặc định",
+					"description": "Tổ hợp tên phông chữ phân tách bằng dấu phẩy, tương đương thuộc tính font-family của CSS, để trống là mặc định",
 					"label": "Họ phông chữ"
 				},
 				"fontPreview": {
-					"defaultText": "Xem trước phông chữ",
+					"defaultText": "Xem trước phông chữ Font Preview",
 					"label": "Xem trước phông chữ"
 				},
 				"fontWeight": {
-					"description": "Tương tự như thuộc tính font-weight trong CSS, đặt giá trị bằng 0 để được hệ thống kiểm soát. Giá trị 600 được khuyến nghị.",
-					"label": "Độ dày của phông chữ"
+					"description": "Tương đương thuộc tính font-weight của CSS, đặt 0 để hệ thống tự điều chỉnh, giá trị khuyến nghị là 600",
+					"label": "Độ đậm phông chữ"
 				},
 				"letterSpacing": {
-					"description": "Tương đương với thuộc tính letter-spacing của CSS, để trống sẽ sử dụng giá trị mặc định",
-					"label": "Khoảng cách giữa các ký tự"
+					"description": "Tương đương thuộc tính letter-spacing của CSS, để trống là mặc định",
+					"label": "Giãn cách ký tự"
 				},
 				"subtitle": "Cài đặt phông chữ lời bài hát",
-				"tip": "Cài đặt này chỉ thay đổi phông chữ của lời bài hát, không bao gồm các phông chữ của thành phần khác"
+				"tip": "Cài đặt này chỉ áp dụng phông chữ cho lời bài hát, không bao gồm phông chữ của các thành phần khác"
 			},
 			"musicInfoAppearance": {
 				"fftDataRange": {
-					"description": "Đơn vị là Hertz (hz), tùy chọn này sẽ ảnh hưởng đến việc hiển thị âm thanh và hiệu ứng nhảy nền.",
-					"label": "Phạm vi tần số hiển thị âm thanh"
+					"description": "Đơn vị là Hertz (Hz), mục này ảnh hưởng đến hiệu ứng hiển thị của trực quan hóa âm thanh và nền nhấp nháy",
+					"label": "Dải tần trực quan hóa âm thanh"
 				},
 				"playerControlsType": {
-					"description": "Thông tin bài hát",
-					"label": "Loại thành phần điều khiển phát",
+					"description": "Là thành phần phía dưới thông tin bài hát",
+					"label": "Kiểu thành phần điều khiển phát",
 					"menu": {
-						"controls": "Thành phần điều khiển phát nhạc",
-						"fft": "Hình ảnh hóa âm thanh bằng dạng sóng",
+						"controls": "Thành phần điều khiển phát",
+						"fft": "Trực quan hóa âm thanh dạng đường kẻ",
 						"none": "Không"
 					}
 				},
 				"showBottomControl": {
-					"description": "Trong bố cục ngang, các nút sẽ ở góc dưới bên phải; trong bố cục dọc, chúng nằm dưới nút phát.",
-					"label": "Hiển thị nhóm nút ở dưới cùng"
+					"description": "Ở bố cục ngang là các nút ở góc dưới bên phải, ở bố cục dọc là các nút phía dưới nút phát",
+					"label": "Hiển thị nhóm nút dưới cùng"
 				},
 				"showMusicAlbum": {
-					"description": " Nếu kích hoạt cả ba mục, bố cục có thể không đẹp, vui lòng điều chỉnh tùy tình huống.",
+					"description": "Nếu bật cả ba mục, bố cục có thể không được đẹp, hãy điều chỉnh tùy tình huống.",
 					"label": "Hiển thị tên album"
 				},
 				"showMusicArtists": {
-					"label": "Hiển thị tác giả bài hát"
+					"label": "Hiển thị nghệ sĩ"
 				},
 				"showMusicName": {
 					"label": "Hiển thị tên bài hát"
@@ -412,12 +416,12 @@
 				},
 				"subtitle": "Kiểu thông tin bài hát",
 				"verticalCoverLayout": {
-					"description": "在隐藏歌词的情况下专辑图的布局方式：\n- 自动：根据专辑图是否为视频以使用沉浸布局\n- 强制默认布局：强制使用默认的专辑图布局\n- 强制沉浸布局：强制使用沉浸式的专辑图布局",
-					"label": "垂直布局专辑图布局模式",
+					"description": "Cách bố trí ảnh bìa khi ẩn lời bài hát:\n- Tự động: dùng bố cục đắm chìm tùy theo ảnh bìa có phải video hay không\n- Ép mặc định: luôn dùng bố cục mặc định\n- Ép đắm chìm: luôn dùng bố cục đắm chìm",
+					"label": "Chế độ bố trí ảnh bìa dọc",
 					"menu": {
-						"auto": "自动",
-						"forceImmersive": "强制沉浸布局",
-						"forceNormal": "强制默认布局"
+						"auto": "Tự động",
+						"forceImmersive": "Ép bố cục đắm chìm",
+						"forceNormal": "Ép bố cục mặc định"
 					}
 				}
 			},
@@ -425,97 +429,97 @@
 				"enterAmllDevPage": "Công cụ phát triển trang lời bài hát",
 				"restartProgram": "Khởi động lại chương trình",
 				"showStatJSFrame": {
-					"description": "Có thể xem thông tin chiếm dụng bộ nhớ (chỉ dành cho các hệ thống Chromium) và các thông tin khác, ảnh hưởng đến hiệu suất khá nhỏ.",
-					"label": "Hiển thị thông tin thống kê hiệu suất"
+					"description": "Có thể xem tốc độ khung hình, thời gian khung, mức sử dụng bộ nhớ (chỉ Chromium) v.v., ảnh hưởng hiệu năng nhỏ.",
+					"label": "Hiển thị thống kê hiệu năng"
 				},
-				"subtitle": "Các tùy chọn khác"
+				"subtitle": "Khác"
 			},
 			"smtc": {
 				"enableMediaControls": {
-					"description": "目前只支持 Windows 的 SMTC",
-					"label": "启用内置播放器的媒体控件"
+					"description": "Hiện chỉ hỗ trợ SMTC của Windows",
+					"label": "Bật điều khiển phương tiện của trình phát tích hợp"
 				}
 			},
 			"taskbarLyric": {
 				"align": {
-					"auto": "自动",
-					"description": "任务栏歌词的对齐方向",
-					"label": "对齐方向",
-					"left": "左对齐",
-					"right": "右对齐"
+					"auto": "Tự động",
+					"description": "Hướng căn chỉnh của lời bài hát trên thanh tác vụ",
+					"label": "Hướng căn chỉnh",
+					"left": "Căn trái",
+					"right": "Căn phải"
 				},
 				"enable": {
-					"description": "在 Windows 任务栏上显示当前播放的歌词",
-					"label": "启用任务栏歌词"
+					"description": "Hiển thị lời bài hát đang phát trên thanh tác vụ Windows",
+					"label": "Bật lời bài hát thanh tác vụ"
 				},
 				"mode": {
-					"auto": "自动",
-					"double": "双行模式",
-					"label": "歌词行数",
-					"single": "单行模式"
+					"auto": "Tự động",
+					"double": "Chế độ hai dòng",
+					"label": "Số dòng lời",
+					"single": "Chế độ một dòng"
 				},
-				"openDevtools": "打开 DevTools",
-				"subtitle": "任务栏歌词",
+				"openDevtools": "Mở DevTools",
+				"subtitle": "Lời bài hát thanh tác vụ",
 				"theme": {
-					"auto": "跟随任务栏",
-					"dark": "深色",
-					"description": "覆盖任务栏歌词的颜色主题",
-					"label": "主题设置",
-					"light": "浅色"
+					"auto": "Theo thanh tác vụ",
+					"dark": "Tối",
+					"description": "Ghi đè chủ đề màu của lời bài hát thanh tác vụ",
+					"label": "Cài đặt chủ đề",
+					"light": "Sáng"
 				}
 			}
 		},
 		"song": {
 			"basic": {
-				"musicDuration": "Thời gian bài hát",
-				"musicFilePath": "Đường dẫn tệp âm thanh",
-				"musicId": "ID bài hát",
+				"musicDuration": "Thời lượng nhạc",
+				"musicFilePath": "Đường dẫn tệp nhạc",
+				"musicId": "ID nhạc",
 				"tabs": {
 					"basic": "Cơ bản",
 					"lyric": "Lời bài hát",
-					"metadata": "Siêu dữ liệu bài hát"
+					"metadata": "Siêu dữ liệu"
 				}
 			},
 			"lyric": {
-				"importFromFile": "从本地文件导入歌词",
+				"importFromFile": "Nhập lời bài hát từ tệp cục bộ",
 				"lyricData": "Dữ liệu lời bài hát",
 				"lyricFormat": {
-					"eslrc": "Lời bài hát định dạng ESLyRiC (eslrc)",
-					"lrc": "Lời bài hát định dạng LyRiC (lrc)",
-					"lys": "Lời bài hát định dạng Lyricify Syllable (lys)",
-					"none": "Không có lời bài hát",
-					"qrc": "Lời bài hát định dạng QRC",
-					"ttml": "Lời bài hát định dạng TTML",
-					"yrc": "Lời bài hát định dạng YRC"
+					"eslrc": "Lời bài hát ESLyRiC",
+					"lrc": "Lời bài hát LyRiC",
+					"lys": "Lời bài hát Lyricify Syllable",
+					"none": "Không có lời",
+					"qrc": "Lời bài hát QRC",
+					"ttml": "Lời bài hát TTML",
+					"yrc": "Lời bài hát YRC"
 				},
 				"lyricFormatLabel": "Định dạng lời bài hát",
-				"romanLyricDataTip": "Vui lòng cung cấp dữ liệu lời bài hát định dạng LyRiC (lrc), sẽ được ghép với các văn bản gốc gần giống theo dấu thời gian để thành bản dịch.",
-				"translationLyricData": "Dữ liệu lời bài hát dịch",
-				"translationLyricDataTip": "Vui lòng cung cấp dữ liệu lời bài hát định dạng LyRiC (lrc), sẽ được ghép với các văn bản gốc gần giống theo dấu thời gian",
-				"ttmlLyricTip": "Lời bài hát TTML có thể đồng thời chứa dữ liệu dịch và phiên âm"
+				"romanLyricDataTip": "Hãy cung cấp dữ liệu lời bài hát dạng LyRiC, sẽ ghép với lời gốc có dấu thời gian trùng hoặc gần nhất thành lời phiên âm",
+				"translationLyricData": "Dữ liệu lời dịch",
+				"translationLyricDataTip": "Hãy cung cấp dữ liệu lời bài hát dạng LyRiC, sẽ ghép với lời gốc có dấu thời gian trùng hoặc gần nhất thành lời dịch",
+				"ttmlLyricTip": "Lời TTML có thể chứa cả dữ liệu dịch và phiên âm."
 			},
 			"metadata": {
-				"changeCoverToImageOrVideo": "Thay đổi bìa thành bìa hình ảnh/ bìa video",
-				"importLyricFromFile": "从本地文件导入歌词",
-				"overrideSafeTip": "Cài đặt trên trang này sẽ không ảnh hưởng đến tệp âm thanh gốc",
-				"reloadMetadataFromFile": "Tải lại siêu dữ liệu từ tệp",
+				"changeCoverToImageOrVideo": "Đổi ảnh bìa thành ảnh / video",
+				"importLyricFromFile": "Nhập lời bài hát từ tệp cục bộ",
+				"overrideSafeTip": "Cài đặt ở trang này sẽ không được ghi vào tệp nhạc gốc",
+				"reloadMetadataFromFile": "Đọc lại siêu dữ liệu từ tệp",
 				"songAlbum": "Tên album",
-				"songArtists": "Tác giả bài hát",
+				"songArtists": "Nghệ sĩ",
 				"songName": "Tên bài hát"
 			}
 		},
 		"ws": {
 			"recv": {
-				"connectedClients": "Các máy khách đã kết nối",
-				"noClients": "Không có kết nối máy khách nào",
-				"openNetworkAddress": "Mở địa chỉ mạng",
-				"tip": "Sau khi kết nối với máy khách , có thể cần thay đổi hướng bài hát hoặc trạng thái thông tin bài hát. Nếu cần mở kết mạng bên ngoài, hãy đặt Host thành 0.0.0.0"
+				"connectedClients": "Máy khách đã kết nối",
+				"noClients": "Không có",
+				"openNetworkAddress": "Địa chỉ mạng mở",
+				"tip": "Sau khi kết nối với máy khách, có thể cần chuyển bài một lần để đồng bộ trạng thái bài hát. Nếu muốn mở cho mạng ngoài, hãy đặt Host là 0.0.0.0."
 			}
 		}
 	},
 	"playbar": {
 		"playlist": {
-			"title": "当前播放列表"
+			"title": "Danh sách đang phát"
 		}
 	},
 	"settings": {
@@ -526,13 +530,13 @@
 			"installPlugins": "安装扩展程序",
 			"openPluginDirectory": "打开扩展程序文件夹",
 			"safetyWarning": "扩展程序将可以访问并操作你的所有数据，包括你的歌单、播放信息等数据，请务必确保扩展程序来源可靠安全，并只安装你信任的扩展程序！作者不承担使用任何扩展程序后产生的一切后果！",
-			"tab": "扩展程序管理",
+			"tab": "Quản lý tiện ích mở rộng",
 			"wipWarning": "扩展程序接口功能仍在开发中，其扩展程序接口有可能随时变更，敬请留意！"
 		}
 	},
 	"ws-protocol": {
 		"toast": {
-			"ttmlParseError": "解析来自 WS 发送端的 TTML 歌词时出错：{{error}}"
+			"ttmlParseError": "Lỗi khi phân tích lời TTML từ phía gửi WS: {{error}}"
 		}
 	}
 }

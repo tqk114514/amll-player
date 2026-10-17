@@ -1,26 +1,26 @@
 {
 	"amll": {
 		"audioQuality": {
-			"channels": "音频通道数量",
-			"codec": "音频解码器",
-			"sampleFormat": "采样格式",
-			"sampleRate": "采样率",
-			"title": "音频解码信息"
+			"channels": "オーディオチャンネル数",
+			"codec": "オーディオコーデック",
+			"sampleFormat": "サンプル形式",
+			"sampleRate": "サンプリングレート",
+			"title": "オーディオデコード情報"
 		},
 		"contextMenu": {
 			"editMusicOverrideMessage": "曲のカバレッジ情報を編集する",
 			"exitLyricPage": "歌詞ページを出る",
 			"forwardSong": "次の曲",
-			"openRecorder": "打开捕获面板",
-			"openScreenshotTool": "打开截图工具",
-			"pauseOrResume": "暂停 / 继续",
-			"play": "播放",
+			"openRecorder": "キャプチャパネルを開く",
+			"openScreenshotTool": "スクリーンショットツールを開く",
+			"pauseOrResume": "一時停止 / 再生",
+			"play": "再生",
 			"rewindSong": "前の曲",
-			"toggleFullscreen": "全屏 / 取消全屏",
+			"toggleFullscreen": "全画面 / 全画面解除",
 			"toggleLyrics": "歌詞を表示",
-			"windowAlwaysOnTop": "窗口置顶"
+			"windowAlwaysOnTop": "常に最前面に表示"
 		},
-		"loadAudioError": "播放后端加载音频失败\n{error}",
+		"loadAudioError": "再生バックエンドのオーディオ読み込みに失敗しました\n{error}",
 		"migrationDialog": {
 			"completedDesc": "{count} 件のデータをインポートしました。",
 			"completedDescDefault": "移行が完了しました。",
@@ -51,67 +51,67 @@
 		},
 		"openMenuViaRightClick": "歌詞ページの任意の場所を右クリックしてメニューを開きます。",
 		"qualityTag": {
-			"hires": "高解析度无损",
-			"lossless": "无损"
+			"hires": "ハイレゾロスレス",
+			"lossless": "ロスレス"
 		},
 		"ttmlImportDialog": {
-			"noResults": "无结果",
-			"openButtonLabel": "从 AMLL TTML DB 搜索 / 导入歌词",
+			"noResults": "結果なし",
+			"openButtonLabel": "AMLL TTML DB から歌詞を検索 / インポート",
 			"searchInput": {
-				"placeholder": "搜索歌曲、歌词内容、歌手等……"
+				"placeholder": "曲名、歌詞内容、アーティストなどを検索……"
 			},
-			"supportText": "AMLL TTML DB 是由 AMLL 社区爱好者们一同建设的开源无版权歌词数据库，想为 AMLL TTML DB 贡献歌词吗？前往<1>GitHub 仓库</1>即可知晓提交歌词流程！",
+			"supportText": "AMLL TTML DB は AMLL コミュニティの有志によって構築されているオープンな無著作権歌詞データベースです。歌詞を提供したい場合は、<1>GitHub リポジトリ</1>で投稿の流れをご確認ください！",
 			"sync": {
-				"empty": "歌词库为空",
-				"error": "同步出错: {error}",
-				"failed": "同步失败: {error}",
-				"skipped": "歌词库已是最新",
-				"updated": "已更新 {count} 首歌词"
+				"empty": "歌詞データベースは空です",
+				"error": "同期エラー: {error}",
+				"failed": "同期失敗: {error}",
+				"skipped": "歌詞データベースは最新です",
+				"updated": "{count} 件の歌詞を更新しました"
 			},
-			"tip": "在上方输入搜索关键词，点击候选项即可将歌词内容直接导入到歌词数据中。",
-			"title": "从 AMLL TTML DB 搜索 / 导入歌词"
+			"tip": "上部に検索キーワードを入力し、候補をクリックすると歌詞内容を直接歌詞データにインポートできます。",
+			"title": "AMLL TTML DB から検索 / インポート"
 		}
 	},
 	"bottom_lyric": {
-		"lyricAuthor": "歌词作者：",
-		"songWriter": "创作者："
+		"lyricAuthor": "歌詞作者：",
+		"songWriter": "クリエイター："
 	},
 	"common": {
 		"dialog": {
 			"cancel": "キャンセル",
-			"close": "关闭",
+			"close": "閉じる",
 			"confirm": "確認",
 			"filter": {
-				"all": "全部文件 (*.*)",
-				"js": "JavaScript 文件 (*.js)"
+				"all": "すべてのファイル (*.*)",
+				"js": "JavaScript ファイル (*.js)"
 			},
 			"save": "セーブ"
 		},
 		"page": {
 			"back": "戻る"
 		},
-		"settings": "设置"
+		"settings": "設定"
 	},
 	"error": {
-		"backToMainPage": "回到主页",
-		"copyError": "复制错误信息",
-		"desc0": "程序在运行时发生了错误，请尝试刷新页面，如果问题仍然无法解决，请联系开发者。",
-		"desc1": "如果您对程序调试有一定了解，可以在开发者控制台中看到更加准确的错误信息。",
-		"errorDetail": "错误信息",
-		"reloadPage": "刷新页面",
-		"title": "程序发生错误"
+		"backToMainPage": "ホームに戻る",
+		"copyError": "エラー情報をコピー",
+		"desc0": "プログラムの実行中にエラーが発生しました。ページの再読み込みをお試しください。問題が解決しない場合は開発者にお問い合わせください。",
+		"desc1": "デバッグに詳しい方は、開発者コンソールでより正確なエラー情報を確認できます。",
+		"errorDetail": "エラー情報",
+		"reloadPage": "ページを再読み込み",
+		"title": "エラーが発生しました"
 	},
 	"extension": {
 		"error": {
 			"invaildPluginFile": "无效扩展程序文件",
-			"missingDependency": "缺失依赖项",
-			"missingMetadata": "缺失必需元数据",
+			"missingDependency": "依存関係が見つかりません",
+			"missingMetadata": "必須のメタデータが見つかりません",
 			"pluginIdConflict": "扩展程序 ID 冲突"
 		},
 		"inject": {
 			"error": {
-				"calloutText": "扩展程序 {id} 在注入组件 / 功能到 {injectPointName} 槽位时发生错误：",
-				"toastText": "扩展程序 {id} 在注入组件 / 功能到 {injectPointName} 槽位时发生错误：\n{error}"
+				"calloutText": "拡張機能 {id} が {injectPointName} スロットへのコンポーネント / 機能の注入中にエラーが発生しました：",
+				"toastText": "拡張機能 {id} が {injectPointName} スロットへのコンポーネント / 機能の注入中にエラーが発生しました：\n{error}"
 			}
 		}
 	},
@@ -135,17 +135,21 @@
 	},
 	"page": {
 		"about": {
-			"credits": "由 SteveXMH 及其所有 Github 协作者共同开发",
-			"downloading": "正在下载更新…… {progressText}",
-			"installing": "正在安装更新，将会自动重启，请稍后……",
-			"installUpdate": "更新并安装",
-			"newVersion": "有可用更新从 {currentVersion} 升级至 {nextVersion}",
-			"subtitle": "关于",
-			"updating": "正在更新，完成后将会自动重启，请稍后……"
+			"credits": "SteveXMH およびすべての GitHub コントリビューターによって開発されています",
+			"downloading": "更新をダウンロード中…… {progressText}",
+			"installing": "更新をインストール中です。完了後自動的に再起動します。しばらくお待ちください……",
+			"installUpdate": "更新してインストール",
+			"newVersion": "{currentVersion} から {nextVersion} への更新が利用可能です",
+			"subtitle": "このアプリについて",
+			"updating": "更新中です。完了後自動的に再起動します。しばらくお待ちください……",
+			"contributorsTitle": "コントリビューター",
+			"forkContributorsTitle": "フォークのコントリビューター",
+			"loadingContributors": "コントリビューターリストを読み込み中…",
+			"updateFailed": "更新に失敗しました：{error}"
 		},
 		"amll-dev": {
 			"title": "Apple Music Like Lyrics 開発者ページ",
-			"warning": "此处的东西用于开发调试用途，仅供作者方便之用，随便使用可能有意想不到的情况出现！（页面内容仅中文）"
+			"warning": "ここにあるものは開発・デバッグ用途で、作者の利便性のためのものです。不用意に使用すると予期しない事態が発生する可能性があります！（ページの内容は中国語のみ）"
 		},
 		"main": {
 			"loadingPlaylist": "プレイリストを読み込んでいます",
@@ -157,36 +161,36 @@
 			},
 			"noPlaylistTip": "プレイリストがない！",
 			"playlistCard": {
-				"createTime": "创建于 {createTime}",
-				"songCount": "{songAmount} 首歌曲"
+				"createTime": "作成日時 {createTime}",
+				"songCount": "{songAmount} 曲"
 			},
 			"playlistMenu": {
 				"delete": "削除",
-				"play": "播放此列表",
-				"playShuffled": "以乱序播放此列表"
+				"play": "このリストを再生",
+				"playShuffled": "このリストをシャッフル再生"
 			},
 			"updateAvailableTag": "アップデートが可能"
 		},
 		"playlist": {
 			"addLocalMusic": {
-				"allFiles": "所有文件",
+				"allFiles": "すべてのファイル",
 				"dialog": {
-					"failedDescription": "以下 {count, plural, other {#}} 首歌曲添加失败：",
-					"failedTitle": "部分歌曲导入失败"
+					"failedDescription": "次の {count, plural, other {#}} 曲の追加に失敗しました：",
+					"failedTitle": "一部の曲のインポートに失敗しました"
 				},
-				"filterName": "音频文件",
-				"label": "添加本地歌曲",
+				"filterName": "オーディオファイル",
+				"label": "ローカルの曲を追加",
 				"toast": {
-					"allFailed": "{errored, plural, other {#}} 首歌曲添加失败",
-					"parsingMusicMetadata": "正在解析音乐元数据以添加歌曲 ({current, plural, other {#}} / {total, plural, other {#}})",
-					"partiallyFailed": "已添加 {succeed, plural, other {#}} 首歌曲，其中 {errored, plural, other {#}} 首歌曲添加失败",
-					"success": "已全部添加 {count, plural, other {#}} 首歌曲"
+					"allFailed": "{errored, plural, other {#}} 曲の追加に失敗しました",
+					"parsingMusicMetadata": "曲を追加するため音楽メタデータを解析中 ({current, plural, other {#}} / {total, plural, other {#}})",
+					"partiallyFailed": "{succeed, plural, other {#}} 曲を追加しました。うち {errored, plural, other {#}} 曲の追加に失敗しました",
+					"success": "{count, plural, other {#}} 曲すべてを追加しました"
 				}
 			},
 			"cover": {
-				"changeCoverToAuto": "更换成自动封面",
+				"changeCoverToAuto": "自動カバーに変更",
 				"mediaFiles": "メディアファイル",
-				"uploadCoverImage": "上传封面图片"
+				"uploadCoverImage": "カバー画像をアップロード"
 			},
 			"music": {
 				"dropdown": {
@@ -194,9 +198,9 @@
 					"playMusic": "曲を再生する",
 					"removeFromPlaylist": "プレイリストから削除"
 				},
-				"unknownSongName": "未知歌曲 ID {id}"
+				"unknownSongName": "不明な曲 ID {id}"
 			},
-			"playAll": "播放全部",
+			"playAll": "すべて再生",
 			"refresh": {
 				"failed": "更新失敗: {error}",
 				"label": "更新",
@@ -229,293 +233,293 @@
 				"unlinkFolderSuccess": "リンクフォルダを削除しました",
 				"updatedAt": "更新日時"
 			},
-			"shufflePlayAll": "随机播放",
-			"totalMusicLabel": "{count, plural, other {#}} 首歌曲"
+			"shufflePlayAll": "シャッフル再生",
+			"totalMusicLabel": "{count, plural, other {#}} 曲"
 		},
 		"search": {
 			"filter": {
-				"albumName": "专辑名 : {keyword}",
-				"artistName": "歌手名 : {keyword}",
+				"albumName": "アルバム名 : {keyword}",
+				"artistName": "アーティスト名 : {keyword}",
 				"candidate": {
-					"albumName": "专辑名 包含 {keyword}",
-					"artistName": "歌手名 包含 {keyword}",
-					"lyricContent": "歌词内容 包含 {keyword}",
-					"playlistName": "播放列表名称 包含 {keyword}",
-					"songName": "歌曲名 包含 {keyword}"
+					"albumName": "アルバム名 含む {keyword}",
+					"artistName": "アーティスト名 含む {keyword}",
+					"lyricContent": "歌詞内容 含む {keyword}",
+					"playlistName": "プレイリスト名 含む {keyword}",
+					"songName": "曲名 含む {keyword}"
 				},
-				"lyricContent": "歌词内容 : {keyword}",
-				"placeholder": "搜索歌单、歌名、歌手等信息……",
-				"playlistName": "播放列表名 : {keyword}",
-				"songName": "歌曲名 : {keyword}"
+				"lyricContent": "歌詞内容 : {keyword}",
+				"placeholder": "プレイリスト、曲名、アーティストなどを検索……",
+				"playlistName": "プレイリスト名 : {keyword}",
+				"songName": "曲名 : {keyword}"
 			},
-			"noPlaylistResult": "无播放列表结果",
-			"noSongResult": "无歌曲结果",
-			"placeholder": "搜索歌曲、歌手、专辑、歌词、播放列表等信息",
-			"searchingPlaylist": "搜索播放列表中",
-			"searchPlaylistResultAmount": "搜索到 {amount} 个播放列表",
-			"searchSongResultAmount": "搜索到 {amount} 首歌曲"
+			"noPlaylistResult": "プレイリストの結果なし",
+			"noSongResult": "曲の結果なし",
+			"placeholder": "曲、アーティスト、アルバム、歌詞、プレイリストなどを検索",
+			"searchingPlaylist": "プレイリストを検索中",
+			"searchPlaylistResultAmount": "{amount} 件のプレイリストが見つかりました",
+			"searchSongResultAmount": "{amount} 曲が見つかりました"
 		},
 		"settings": {
 			"general": {
 				"displayLanguage": {
-					"cimode": "本地化 ID",
-					"label": "显示语言"
+					"cimode": "ローカライズ ID",
+					"label": "表示言語"
 				},
-				"subtitle": "常规",
+				"subtitle": "一般",
 				"theme": {
-					"auto": "自动",
-					"dark": "深色",
-					"description": "选择应用的外观主题",
-					"label": "界面主题",
-					"light": "浅色"
+					"auto": "自動",
+					"dark": "ダーク",
+					"description": "アプリの外観テーマを選択します",
+					"label": "外観テーマ",
+					"light": "ライト"
 				},
 				"windowAlwaysOnTop": {
-					"description": "将应用窗口设置为始终置顶",
-					"label": "启用窗口置顶"
+					"description": "アプリのウィンドウを常に最前面に表示します",
+					"label": "常に最前面で表示"
 				}
 			},
 			"lyricAppearance": {
 				"advanceLyricDynamicLyricTime": {
-					"description": "即将原歌词行的初始时间时序提前，以便在歌词滚动结束后刚好开始播放（逐词）歌词效果。这个行为更加接近 Apple Music 的效果，但是大部分情况下会导致歌词行末尾的歌词尚未播放完成便被切换到下一行。",
-					"label": "提前歌词行时序"
+					"description": "元の歌詞行の初期タイミングを早め、歌詞のスクロール終了後にちょうど（逐語）歌詞の再生が始まるようにします。Apple Music の挙動に近づきますが、多くの場合、歌詞行の末尾が再生し終わる前に次の行へ切り替わります。",
+					"label": "歌詞行タイミングの前倒し"
 				},
 				"enableLyricLineBlurEffect": {
-					"description": "对性能影响较高，如果遇到性能问题，可以尝试关闭此项。默认开启。",
-					"label": "启用歌词模糊效果"
+					"description": "性能への影響が大きいため、問題が発生した場合は無効化をお試しください。デフォルトで有効。",
+					"label": "歌詞のぼかし効果を有効化"
 				},
 				"enableLyricLineScaleEffect": {
-					"description": "对性能无影响，非当前播放歌词行会略微缩小。默认开启",
-					"label": "启用歌词缩放效果"
+					"description": "性能への影響はなく、再生中以外の歌詞行がわずかに縮小されます。デフォルトで有効",
+					"label": "歌詞のスケール効果を有効化"
 				},
 				"enableLyricLineSpringAnimation": {
-					"description": "对性能影响较高，如果遇到性能问题，可以尝试关闭此项。默认开启。",
-					"label": "启用歌词行弹簧动画效果"
+					"description": "性能への影響が大きいため、問題が発生した場合は無効化をお試しください。デフォルトで有効。",
+					"label": "歌詞行のスプリングアニメーションを有効化"
 				},
 				"lyricFontSize": {
-					"descriptionResponsive": "设置歌词的字体大小",
-					"label": "歌词字体大小",
+					"descriptionResponsive": "歌詞のフォントサイズを設定します",
+					"label": "歌詞フォントサイズ",
 					"menu": {
-						"extra_large": "极大",
-						"extra_small": "极小",
-						"huge": "超大",
+						"extra_large": "特大",
+						"extra_small": "極小",
+						"huge": "巨大",
 						"large": "大",
 						"medium": "中",
 						"small": "小",
-						"tiny": "超小"
+						"tiny": "ごく小"
 					}
 				},
 				"lyricWordFadeWidth": {
-					"description": "调节逐词歌词时单词的渐变过渡宽度，单位为一个全角字的宽度，默认为 0.5。\n如果要模拟 Apple Music for Android 的效果，可以设置为 1。\n如果要模拟 Apple Music for iPad 的效果，可以设置为 0.5。\n如需关闭逐词歌词时单词的渐变过渡效果，可以设置为 0。",
-					"label": "逐词渐变宽度"
+					"description": "逐語歌詞の単語のフェード幅を調節します。単位は全角文字 1 文字分の幅で、デフォルトは 0.5。\nApple Music for Android の挙動に似せたい場合は 1 に設定します。\nApple Music for iPad の挙動に似せたい場合は 0.5 に設定します。\n逐語歌詞のフェード効果を無効にしたい場合は 0 に設定します。",
+					"label": "逐語フェード幅"
 				},
-				"subtitle": "歌词样式"
+				"subtitle": "歌詞スタイル"
 			},
 			"lyricBackground": {
 				"backgroundRenderer": {
-					"label": "背景渲染器"
+					"label": "背景レンダラー"
 				},
 				"lyricBackgroundColor": {
-					"description": "等同于放入 background 样式的字符串值，默认为 #111111",
-					"label": "CSS 背景属性值"
+					"description": "background スタイルに指定する文字列と同等です。デフォルトは #111111",
+					"label": "CSS 背景プロパティ値"
 				},
 				"lyricBackgroundFPS": {
-					"description": "对性能影响较高，但是实际开销不大，如果遇到性能问题，可以尝试降低此值。默认值为 60。",
-					"label": "背景最高帧数"
+					"description": "性能への影響は比較的大きいですが、実際の負荷はさほど大きくありません。問題が発生した場合はこの値を下げてください。デフォルトは 60。",
+					"label": "背景の最大フレームレート"
 				},
 				"lyricBackgroundRenderScale": {
-					"description": "对性能影响较高，但是实际开销不大，如果遇到性能问题，可以尝试降低此值。默认值为 1 即每像素点渲染。",
-					"label": "背景渲染倍率"
+					"description": "性能への影響は比較的大きいですが、実際の負荷はさほど大きくありません。問題が発生した場合はこの値を下げてください。デフォルトは 1（ピクセルごとに描画）。",
+					"label": "背景レンダリング倍率"
 				},
 				"lyricBackgroundStaticMode": {
-					"description": "让背景会在除了切换歌曲变换封面的情况下保持静止，如果遇到了性能问题，可以考虑开启此项。\n注意：启用此项会导致背景跳动效果失效。",
-					"label": "背景静态模式"
+					"description": "曲の切り替えによるカバー変更時以外、背景を静止させます。性能問題がある場合は有効化をご検討ください。\n注意：有効化すると背景の跳ねる演出が無効になります。",
+					"label": "背景の静止モード"
 				},
 				"menu": {
 					"cssBackground": "CSS 背景",
-					"meshGradientRenderer": "网格渐变渲染器",
-					"pixiRenderer": "PixiJS 渲染器"
+					"meshGradientRenderer": "メッシュグラデーションレンダラー",
+					"pixiRenderer": "PixiJS レンダラー"
 				},
-				"subtitle": "歌词背景"
+				"subtitle": "歌詞背景"
 			},
 			"lyricContent": {
 				"bottomLyricMode": {
-					"description": "控制歌词底部显示的歌曲创作者及歌词作者信息",
-					"label": "底部信息",
+					"description": "歌詞の下部に表示する曲のクリエイターと歌詞作者の情報を制御します",
+					"label": "下部情報",
 					"menu": {
-						"none": "完全不显示",
-						"onlyLyricAuthors": "只显示歌词作者",
-						"onlySongWriters": "只显示创作者",
-						"preferLyricAuthors": "优先显示歌词作者",
-						"preferSongWriters": "优先显示创作者"
+						"none": "非表示",
+						"onlyLyricAuthors": "歌詞作者のみ表示",
+						"onlySongWriters": "クリエイターのみ表示",
+						"preferLyricAuthors": "歌詞作者を優先表示",
+						"preferSongWriters": "クリエイターを優先表示"
 					}
 				},
 				"enableLyricRomanLine": {
-					"label": "显示音译歌词"
+					"label": "音訳歌詞を表示"
 				},
 				"enableLyricSwapTransRomanLine": {
-					"description": "仅上面两者启用后有效",
-					"label": "启用音译歌词与翻译歌词互换"
+					"description": "上記の両方が有効な場合のみ機能します",
+					"label": "音訳歌詞と翻訳歌詞の入れ替えを有効化"
 				},
-				"enableLyricTranslationLine": "显示翻译歌词",
-				"subtitle": "歌词内容"
+				"enableLyricTranslationLine": "翻訳歌詞を表示",
+				"subtitle": "歌詞コンテンツ"
 			},
 			"lyricFont": {
 				"fontFamily": {
-					"description": "以逗号分隔的字体名称组合，等同于 CSS 的 font-family 属性，留空为默认",
-					"label": "字体家族"
+					"description": "カンマ区切りのフォント名の組み合わせ。CSS の font-family プロパティと同等。空欄でデフォルト",
+					"label": "フォントファミリー"
 				},
 				"fontPreview": {
-					"defaultText": "字体预览 Font Preview",
-					"label": "字体预览"
+					"defaultText": "フォントプレビュー Font Preview",
+					"label": "フォントプレビュー"
 				},
 				"fontWeight": {
-					"description": "等同于 CSS 的 font-weight 属性，设置 0 为系统控制，推荐值 600",
-					"label": "字体字重"
+					"description": "CSS の font-weight プロパティと同等。0 でシステムに任せ、推奨値は 600",
+					"label": "フォントの太さ"
 				},
 				"letterSpacing": {
-					"description": "等同于 CSS 的 letter-spacing 属性，留空为默认",
-					"label": "字符间距"
+					"description": "CSS の letter-spacing プロパティと同等。空欄でデフォルト",
+					"label": "文字間隔"
 				},
-				"subtitle": "歌词字体设置",
-				"tip": "此设置仅设置歌词字体，不包含其他组件的字体"
+				"subtitle": "歌詞フォント設定",
+				"tip": "この設定は歌詞のフォントにのみ適用され、他のコンポーネントのフォントは含まれません"
 			},
 			"musicInfoAppearance": {
 				"fftDataRange": {
-					"description": "单位为赫兹（hz），此项会影响音频可视化和背景跳动效果的展示效果",
-					"label": "音频可视化频域范围"
+					"description": "単位はヘルツ (Hz)。この項目はオーディオビジュアライゼーションと背景の跳ねる演出の表示に影響します",
+					"label": "オーディオビジュアライゼーションの周波数範囲"
 				},
 				"playerControlsType": {
-					"description": "即歌曲信息下方的组件",
-					"label": "播放控制组件类型",
+					"description": "曲情報の下にあるコンポーネントです",
+					"label": "再生コントロールの種類",
 					"menu": {
-						"controls": "播放控制组件",
-						"fft": "线条音频可视化",
-						"none": "无"
+						"controls": "再生コントロール",
+						"fft": "ラインオーディオビジュアライゼーション",
+						"none": "なし"
 					}
 				},
 				"showBottomControl": {
-					"description": "在横向布局里是右下角的几个按钮，在竖向布局里是播放按钮下方的几个按钮",
-					"label": "显示底部按钮组"
+					"description": "横向きレイアウトでは右下のボタン、縦向きレイアウトでは再生ボタンの下のボタンです",
+					"label": "下部ボタン群を表示"
 				},
 				"showMusicAlbum": {
-					"description": "如果同时启用三个，布局上可能不太好看，请酌情调节。",
-					"label": "显示歌曲专辑名称"
+					"description": "3 つすべてを有効にするとレイアウトが崩れる場合があります。適宜調整してください。",
+					"label": "曲のアルバム名を表示"
 				},
 				"showMusicArtists": {
-					"label": "显示歌曲作者"
+					"label": "曲のアーティストを表示"
 				},
 				"showMusicName": {
-					"label": "显示歌曲名称"
+					"label": "曲名を表示"
 				},
 				"showVolumeControl": {
-					"label": "显示音量控制条"
+					"label": "音量コントロールを表示"
 				},
-				"subtitle": "歌曲信息样式",
+				"subtitle": "曲情報スタイル",
 				"verticalCoverLayout": {
-					"description": "在隐藏歌词的情况下专辑图的布局方式：\n- 自动：根据专辑图是否为视频以使用沉浸布局\n- 强制默认布局：强制使用默认的专辑图布局\n- 强制沉浸布局：强制使用沉浸式的专辑图布局",
-					"label": "垂直布局专辑图布局模式",
+					"description": "歌詞を非表示にしている際のアルバムカバーのレイアウト：\n- 自動：カバーが動画かどうかに応じて没入レイアウトを使用\n- 強制デフォルトレイアウト：常にデフォルトのカバー配置を使用\n- 強制没入レイアウト：常に没入型のカバー配置を使用",
+					"label": "縦向きレイアウトのカバー配置モード",
 					"menu": {
-						"auto": "自动",
-						"forceImmersive": "强制沉浸布局",
-						"forceNormal": "强制默认布局"
+						"auto": "自動",
+						"forceImmersive": "強制没入レイアウト",
+						"forceNormal": "強制デフォルトレイアウト"
 					}
 				}
 			},
 			"others": {
-				"enterAmllDevPage": "歌词页面开发用工具",
-				"restartProgram": "重启程序",
+				"enterAmllDevPage": "歌詞ページ開発用ツール",
+				"restartProgram": "プログラムを再起動",
 				"showStatJSFrame": {
-					"description": "可以看到帧率、帧时间、内存占用（仅 Chromuim 系）等信息，对性能影响较小。",
-					"label": "显示性能统计信息"
+					"description": "フレームレート、フレーム時間、メモリ使用量（Chromium 系のみ）などを確認できます。性能への影響は小さめです。",
+					"label": "パフォーマンス統計を表示"
 				},
-				"subtitle": "杂项"
+				"subtitle": "その他"
 			},
 			"smtc": {
 				"enableMediaControls": {
-					"description": "目前只支持 Windows 的 SMTC",
-					"label": "启用内置播放器的媒体控件"
+					"description": "現在は Windows の SMTC のみサポートしています",
+					"label": "内蔵プレイヤーのメディアコントロールを有効化"
 				}
 			},
 			"taskbarLyric": {
 				"align": {
-					"auto": "自动",
-					"description": "任务栏歌词的对齐方向",
-					"label": "对齐方向",
-					"left": "左对齐",
-					"right": "右对齐"
+					"auto": "自動",
+					"description": "タスクバー歌詞の揃え方向",
+					"label": "揃え方向",
+					"left": "左揃え",
+					"right": "右揃え"
 				},
 				"enable": {
-					"description": "在 Windows 任务栏上显示当前播放的歌词",
-					"label": "启用任务栏歌词"
+					"description": "Windows のタスクバーに再生中の歌詞を表示します",
+					"label": "タスクバー歌詞を有効化"
 				},
 				"mode": {
-					"auto": "自动",
-					"double": "双行模式",
-					"label": "歌词行数",
-					"single": "单行模式"
+					"auto": "自動",
+					"double": "2 行モード",
+					"label": "歌詞の行数",
+					"single": "1 行モード"
 				},
-				"openDevtools": "打开 DevTools",
-				"subtitle": "任务栏歌词",
+				"openDevtools": "DevTools を開く",
+				"subtitle": "タスクバー歌詞",
 				"theme": {
-					"auto": "跟随任务栏",
-					"dark": "深色",
-					"description": "覆盖任务栏歌词的颜色主题",
-					"label": "主题设置",
-					"light": "浅色"
+					"auto": "タスクバーに合わせる",
+					"dark": "ダーク",
+					"description": "タスクバー歌詞のカラーテーマを上書きします",
+					"label": "テーマ設定",
+					"light": "ライト"
 				}
 			}
 		},
 		"song": {
 			"basic": {
-				"musicDuration": "音乐时长",
-				"musicFilePath": "音乐文件路径",
-				"musicId": "音乐 ID",
+				"musicDuration": "音楽の長さ",
+				"musicFilePath": "音楽ファイルのパス",
+				"musicId": "音楽 ID",
 				"tabs": {
 					"basic": "基本",
-					"lyric": "歌词",
-					"metadata": "元数据"
+					"lyric": "歌詞",
+					"metadata": "メタデータ"
 				}
 			},
 			"lyric": {
-				"importFromFile": "从本地文件导入歌词",
-				"lyricData": "歌词数据",
+				"importFromFile": "ローカルファイルから歌詞をインポート",
+				"lyricData": "歌詞データ",
 				"lyricFormat": {
-					"eslrc": "ESLyRiC 歌词",
-					"lrc": "LyRiC 歌词",
-					"lys": "Lyricify Syllable 歌词",
-					"none": "无歌词",
-					"qrc": "QRC 歌词",
-					"ttml": "TTML 歌词",
-					"yrc": "YRC 歌词"
+					"eslrc": "ESLyRiC 歌詞",
+					"lrc": "LyRiC 歌詞",
+					"lys": "Lyricify Syllable 歌詞",
+					"none": "歌詞なし",
+					"qrc": "QRC 歌詞",
+					"ttml": "TTML 歌詞",
+					"yrc": "YRC 歌詞"
 				},
-				"lyricFormatLabel": "歌词格式",
-				"romanLyricDataTip": "请提供 LyRiC 格式的歌词数据，将会根据时间戳与一致或靠近的原文歌词配对成为音译",
-				"translationLyricData": "翻译歌词数据",
-				"translationLyricDataTip": "请提供 LyRiC 格式的歌词数据，将会根据时间戳与一致或靠近的原文歌词配对成为译文",
-				"ttmlLyricTip": "TTML 歌词可同时包含翻译与音译数据。"
+				"lyricFormatLabel": "歌詞フォーマット",
+				"romanLyricDataTip": "LyRiC 形式の歌詞データを指定してください。タイムスタンプが一致または近い原文歌詞と照合して音訳になります",
+				"translationLyricData": "翻訳歌詞データ",
+				"translationLyricDataTip": "LyRiC 形式の歌詞データを指定してください。タイムスタンプが一致または近い原文歌詞と照合して訳文になります",
+				"ttmlLyricTip": "TTML 歌詞は翻訳と音訳の両方のデータを含められます。"
 			},
 			"metadata": {
-				"changeCoverToImageOrVideo": "更换封面图为图片 / 视频",
-				"importLyricFromFile": "从本地文件导入歌词",
-				"overrideSafeTip": "本页面的设置不会写入到原始音乐文件中",
-				"reloadMetadataFromFile": "重新从文件中读取元数据",
-				"songAlbum": "音乐专辑名",
-				"songArtists": "音乐作者",
-				"songName": "音乐名称"
+				"changeCoverToImageOrVideo": "カバー画像を画像 / 動画に変更",
+				"importLyricFromFile": "ローカルファイルから歌詞をインポート",
+				"overrideSafeTip": "このページの設定は元の音楽ファイルには書き込まれません",
+				"reloadMetadataFromFile": "ファイルからメタデータを再読み込み",
+				"songAlbum": "アルバム名",
+				"songArtists": "アーティスト",
+				"songName": "曲名"
 			}
 		},
 		"ws": {
 			"recv": {
-				"connectedClients": "已连接的客户端",
-				"noClients": "无",
-				"openNetworkAddress": "开放网络地址",
-				"tip": "连接到客户端后，可能需要切换一次歌曲方可同步歌曲信息状态。如需对外部网络开放，请将 Host 设置成 0.0.0.0。"
+				"connectedClients": "接続済みクライアント",
+				"noClients": "なし",
+				"openNetworkAddress": "公開ネットワークアドレス",
+				"tip": "クライアント接続後、曲情報の状態を同期するには一度曲を切り替える必要がある場合があります。外部ネットワークに公開する場合は Host を 0.0.0.0 に設定してください。"
 			}
 		}
 	},
 	"playbar": {
 		"playlist": {
-			"title": "当前播放列表"
+			"title": "現在の再生リスト"
 		}
 	},
 	"settings": {
@@ -526,13 +530,13 @@
 			"installPlugins": "安装扩展程序",
 			"openPluginDirectory": "打开扩展程序文件夹",
 			"safetyWarning": "扩展程序将可以访问并操作你的所有数据，包括你的歌单、播放信息等数据，请务必确保扩展程序来源可靠安全，并只安装你信任的扩展程序！作者不承担使用任何扩展程序后产生的一切后果！",
-			"tab": "扩展程序管理",
+			"tab": "拡張機能管理",
 			"wipWarning": "扩展程序接口功能仍在开发中，其扩展程序接口有可能随时变更，敬请留意！"
 		}
 	},
 	"ws-protocol": {
 		"toast": {
-			"ttmlParseError": "解析来自 WS 发送端的 TTML 歌词时出错：{{error}}"
+			"ttmlParseError": "WS 送信側からの TTML 歌詞の解析中にエラー：{{error}}"
 		}
 	}
 }

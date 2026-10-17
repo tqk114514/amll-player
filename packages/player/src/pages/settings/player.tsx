@@ -1401,9 +1401,20 @@ const AboutSettings = () => {
 								let lastSpeedSampleAt = 0;
 								let lastSpeedSampleBytes = 0;
 								let speedBytesPerSec = 0;
+								function formatSize(bytes: number) {
+									// 使用十进制 KB/MB 标注,与下载工具的常见展示一致
+									return bytes < 1e6
+										? `${(bytes / 1e3).toFixed(1)} KB`
+										: `${(bytes / 1e6).toFixed(2)} MB`;
+								}
+								function formatSpeed(bytesPerSec: number) {
+									return bytesPerSec < 1e6
+										? `${(bytesPerSec / 1e3).toFixed(1)} KB/s`
+										: `${(bytesPerSec / 1e6).toFixed(2)} MB/s`;
+								}
 								function getProgressSizeText() {
-									const rec = `${(receivedLength / 1024 / 1024).toFixed(2)} MiB`;
-									const speed = `${(speedBytesPerSec / 1024 / 1024).toFixed(2)} MiB/s`;
+									const rec = formatSize(receivedLength);
+									const speed = formatSpeed(speedBytesPerSec);
 									// total 未知或为 0 时按 0% 处理,避免出现 NaN%
 									const percent = (
 										(receivedLength / (contentLength || 1)) *
@@ -1412,10 +1423,7 @@ const AboutSettings = () => {
 									if (contentLength === undefined) {
 										return `(${rec}) (${speed})`;
 									}
-									const total = `${(contentLength / 1024 / 1024).toFixed(
-										2,
-									)} MiB`;
-									return `(${rec} / ${total}) (${percent}%) (${speed})`;
+									return `(${rec} / ${formatSize(contentLength)}) (${percent}%) (${speed})`;
 								}
 								const getDownloadMessage = (progressText: string) =>
 									t("page.about.downloading", "正在下载更新…… {progressText}", {
@@ -1427,10 +1435,11 @@ const AboutSettings = () => {
 									const now = performance.now();
 									switch (event.event) {
 										case "started": {
-											contentLength = event.total;
-											receivedLength = event.received;
+											// started 事件只携带 total,已下载量从 0 起算
+											contentLength = event.total ?? 0;
+											receivedLength = event.received ?? 0;
 											lastSpeedSampleAt = now;
-											lastSpeedSampleBytes = event.received;
+											lastSpeedSampleBytes = receivedLength;
 											toast.update(toastId, {
 												render: getDownloadMessage(getProgressSizeText()),
 												progress: 0,
@@ -1444,10 +1453,10 @@ const AboutSettings = () => {
 													((event.received - lastSpeedSampleBytes) / elapsed) *
 													1000;
 											}
-											receivedLength = event.received;
+											receivedLength = event.received ?? 0;
 											lastSpeedSampleAt = now;
-											lastSpeedSampleBytes = event.received;
-											contentLength = event.total;
+											lastSpeedSampleBytes = receivedLength;
+											contentLength = event.total ?? 0;
 											toast.update(toastId, {
 												render: getDownloadMessage(getProgressSizeText()),
 												progress:

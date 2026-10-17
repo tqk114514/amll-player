@@ -11,14 +11,14 @@
 			"editMusicOverrideMessage": "編輯歌曲覆蓋訊息",
 			"exitLyricPage": "退出歌詞介面",
 			"forwardSong": "下一首",
-			"openRecorder": "打开捕获面板",
-			"openScreenshotTool": "打开截图工具",
+			"openRecorder": "開啟擷取面板",
+			"openScreenshotTool": "開啟截圖工具",
 			"pauseOrResume": "暫停 / 繼續",
 			"play": "播放",
 			"rewindSong": "上一首",
 			"toggleFullscreen": "全熒幕 / 取消全熒幕",
 			"toggleLyrics": "顯示歌詞",
-			"windowAlwaysOnTop": "窗口置顶"
+			"windowAlwaysOnTop": "視窗置頂"
 		},
 		"loadAudioError": "播放後端加載音頻失敗\n{error}",
 		"migrationDialog": {
@@ -31,7 +31,7 @@
 			"deleteOldDataOnSkip": "同時刪除舊版本資料",
 			"description": "偵測到舊版本 AMLL Player 的歌單資料，是否需要遷移？",
 			"doNotClose": "遷移過程中請勿關閉應用程式",
-			"dontAskAgain": "不再提示",
+			"dontAskAgain": "不再顯示",
 			"errorListTitle": "以下項目遷移失敗：",
 			"failedDesc": "遷移過程中發生錯誤：",
 			"failedItems": "（{count} 項失敗）",
@@ -62,19 +62,19 @@
 			},
 			"supportText": "AMLL TTML DB 是由 AMLL 社群愛好者們一同建立的開源無版權歌詞資料庫，想為 AMLL TTML DB 貢獻歌詞嗎？前往<1>GitHub 倉庫</1>即可了解提交歌詞流程！",
 			"sync": {
-				"empty": "歌词库为空",
-				"error": "同步出错: {error}",
-				"failed": "同步失败: {error}",
-				"skipped": "歌词库已是最新",
-				"updated": "已更新 {count} 首歌词"
+				"empty": "歌詞庫為空",
+				"error": "同步錯誤: {error}",
+				"failed": "同步失敗: {error}",
+				"skipped": "歌詞庫已是最新",
+				"updated": "已更新 {count} 首歌詞"
 			},
 			"tip": "在上方輸入搜尋關鍵字，點選候選項即可將歌詞內容直接匯入歌詞資料。",
 			"title": "從 AMLL TTML DB 搜尋 / 導入歌詞"
 		}
 	},
 	"bottom_lyric": {
-		"lyricAuthor": "歌词作者：",
-		"songWriter": "创作者："
+		"lyricAuthor": "歌詞作者：",
+		"songWriter": "創作者："
 	},
 	"common": {
 		"dialog": {
@@ -90,7 +90,7 @@
 		"page": {
 			"back": "返回"
 		},
-		"settings": "设置"
+		"settings": "設定"
 	},
 	"error": {
 		"backToMainPage": "回到主頁",
@@ -141,7 +141,11 @@
 			"installUpdate": "更新并安裝",
 			"newVersion": "有可用更新从 {currentVersion} 升級至 {nextVersion}",
 			"subtitle": "關於",
-			"updating": "正在更新，完成后將會自動重啟，請稍後……"
+			"updating": "正在更新，完成后將會自動重啟，請稍後……",
+			"contributorsTitle": "貢獻者",
+			"forkContributorsTitle": "分支貢獻者",
+			"loadingContributors": "正在載入貢獻者列表…",
+			"updateFailed": "更新失敗：{error}"
 		},
 		"amll-dev": {
 			"title": "Apple Music Like Lyrics 開發者頁面",
@@ -171,16 +175,16 @@
 			"addLocalMusic": {
 				"allFiles": "所有檔案",
 				"dialog": {
-					"failedDescription": "以下 {count, plural, other {#}} 首歌曲添加失败：",
-					"failedTitle": "部分歌曲导入失败"
+					"failedDescription": "以下 {count, plural, other {#}} 首歌曲新增失敗：",
+					"failedTitle": "部分歌曲匯入失敗"
 				},
 				"filterName": "音頻檔案",
-				"label": "添加本地歌曲",
+				"label": "新增本地歌曲",
 				"toast": {
 					"allFailed": "{errored, plural, other {#}} 首歌曲添加失敗",
 					"parsingMusicMetadata": "正在解析音樂後設資料以添加歌曲 ({current, plural, other {#}} / {total, plural, other {#}})",
 					"partiallyFailed": "已添加 {succeed, plural, other {#}} 首歌曲，其中 {errored, plural, other {#}} 首歌曲添加失敗",
-					"success": "已全部添加 {count, plural, other {#}} 首歌曲"
+					"success": "已全部新增 {count, plural, other {#}} 首歌曲"
 				}
 			},
 			"cover": {
@@ -258,20 +262,20 @@
 		"settings": {
 			"general": {
 				"displayLanguage": {
-					"cimode": "本地化 ID",
+					"cimode": "在地化 ID",
 					"label": "顯示語言"
 				},
 				"subtitle": "常規",
 				"theme": {
-					"auto": "自动",
+					"auto": "自動",
 					"dark": "深色",
-					"description": "选择应用的外观主题",
-					"label": "界面主题",
-					"light": "浅色"
+					"description": "選擇應用程式的外觀主題",
+					"label": "外觀主題",
+					"light": "淺色"
 				},
 				"windowAlwaysOnTop": {
-					"description": "将应用窗口设置为始终置顶",
-					"label": "启用窗口置顶"
+					"description": "將應用程式視窗設為永遠置頂",
+					"label": "啟用視窗置頂"
 				}
 			},
 			"lyricAppearance": {
@@ -292,16 +296,16 @@
 					"label": "啟用歌詞行彈簧動畫效果"
 				},
 				"lyricFontSize": {
-					"descriptionResponsive": "设置歌词的字体大小",
-					"label": "歌词字体大小",
+					"descriptionResponsive": "設定歌詞的字體大小",
+					"label": "歌詞字體大小",
 					"menu": {
-						"extra_large": "极大",
-						"extra_small": "极小",
+						"extra_large": "極大",
+						"extra_small": "極小",
 						"huge": "超大",
 						"large": "大",
 						"medium": "中",
 						"small": "小",
-						"tiny": "超小"
+						"tiny": "極小"
 					}
 				},
 				"lyricWordFadeWidth": {
@@ -315,8 +319,8 @@
 					"label": "背景渲染器"
 				},
 				"lyricBackgroundColor": {
-					"description": "等同于放入 background 样式的字符串值，默认为 #111111",
-					"label": "CSS 背景属性值"
+					"description": "等同於放入 background 樣式的字串值，預設為 #111111",
+					"label": "CSS 背景屬性值"
 				},
 				"lyricBackgroundFPS": {
 					"description": "對效能影響較高，但是實際開銷不大，如果遇到效能問題，可以嘗試降低此值。預設值為 60。",
@@ -339,14 +343,14 @@
 			},
 			"lyricContent": {
 				"bottomLyricMode": {
-					"description": "控制歌词底部显示的歌曲创作者及歌词作者信息",
-					"label": "底部信息",
+					"description": "控制歌詞底部顯示的歌曲創作者及歌詞作者資訊",
+					"label": "底部資訊",
 					"menu": {
-						"none": "完全不显示",
-						"onlyLyricAuthors": "只显示歌词作者",
-						"onlySongWriters": "只显示创作者",
-						"preferLyricAuthors": "优先显示歌词作者",
-						"preferSongWriters": "优先显示创作者"
+						"none": "完全不顯示",
+						"onlyLyricAuthors": "只顯示歌詞作者",
+						"onlySongWriters": "只顯示創作者",
+						"preferLyricAuthors": "優先顯示歌詞作者",
+						"preferSongWriters": "優先顯示創作者"
 					}
 				},
 				"enableLyricRomanLine": {
@@ -432,36 +436,36 @@
 			},
 			"smtc": {
 				"enableMediaControls": {
-					"description": "目前只支持 Windows 的 SMTC",
-					"label": "启用内置播放器的媒体控件"
+					"description": "目前僅支援 Windows 的 SMTC",
+					"label": "啟用內建播放器的媒體控制項"
 				}
 			},
 			"taskbarLyric": {
 				"align": {
-					"auto": "自动",
-					"description": "任务栏歌词的对齐方向",
-					"label": "对齐方向",
-					"left": "左对齐",
-					"right": "右对齐"
+					"auto": "自動",
+					"description": "工作列歌詞的對齊方向",
+					"label": "對齊方向",
+					"left": "靠左對齊",
+					"right": "靠右對齊"
 				},
 				"enable": {
-					"description": "在 Windows 任务栏上显示当前播放的歌词",
-					"label": "启用任务栏歌词"
+					"description": "在 Windows 工作列上顯示目前播放的歌詞",
+					"label": "啟用工作列歌詞"
 				},
 				"mode": {
-					"auto": "自动",
-					"double": "双行模式",
-					"label": "歌词行数",
-					"single": "单行模式"
+					"auto": "自動",
+					"double": "雙行模式",
+					"label": "歌詞行數",
+					"single": "單行模式"
 				},
-				"openDevtools": "打开 DevTools",
-				"subtitle": "任务栏歌词",
+				"openDevtools": "開啟 DevTools",
+				"subtitle": "工作列歌詞",
 				"theme": {
-					"auto": "跟随任务栏",
+					"auto": "跟隨工作列",
 					"dark": "深色",
-					"description": "覆盖任务栏歌词的颜色主题",
-					"label": "主题设置",
-					"light": "浅色"
+					"description": "覆寫工作列歌詞的色彩主題",
+					"label": "主題設定",
+					"light": "淺色"
 				}
 			}
 		},
@@ -477,7 +481,7 @@
 				}
 			},
 			"lyric": {
-				"importFromFile": "从本地文件导入歌词",
+				"importFromFile": "從本機檔案匯入歌詞",
 				"lyricData": "歌詞數據",
 				"lyricFormat": {
 					"eslrc": "ESLyRiC 歌詞",
@@ -496,7 +500,7 @@
 			},
 			"metadata": {
 				"changeCoverToImageOrVideo": "更換封面圖為圖片 / 影片",
-				"importLyricFromFile": "从本地文件导入歌词",
+				"importLyricFromFile": "從本機檔案匯入歌詞",
 				"overrideSafeTip": "本頁面的設定不會寫入到原始音樂檔案中",
 				"reloadMetadataFromFile": "重新從檔案讀取後設資料",
 				"songAlbum": "音樂專輯名",
@@ -532,7 +536,7 @@
 	},
 	"ws-protocol": {
 		"toast": {
-			"ttmlParseError": "解析来自 WS 发送端的 TTML 歌词时出错：{{error}}"
+			"ttmlParseError": "解析來自 WS 傳送端的 TTML 歌詞時發生錯誤：{{error}}"
 		}
 	}
 }

@@ -1,7 +1,7 @@
 {
 	"amll": {
 		"audioQuality": {
-			"channels": "音频通道数量",
+			"channels": "Audio channel count",
 			"codec": "Audio codec",
 			"sampleFormat": "Sample format",
 			"sampleRate": "Sample rate",
@@ -11,14 +11,14 @@
 			"editMusicOverrideMessage": "Edit Track Override Data",
 			"exitLyricPage": "Exit Lyrics Page",
 			"forwardSong": "Next Song",
-			"openRecorder": "打开捕获面板",
-			"openScreenshotTool": "打开截图工具",
+			"openRecorder": "Open capture panel",
+			"openScreenshotTool": "Open screenshot tool",
 			"pauseOrResume": "Pause / Resume",
-			"play": "播放",
+			"play": "Play",
 			"rewindSong": "Previous Song",
 			"toggleFullscreen": "Enter / Exit full screen",
 			"toggleLyrics": "Lyrics",
-			"windowAlwaysOnTop": "窗口置顶"
+			"windowAlwaysOnTop": "Always on top"
 		},
 		"loadAudioError": "The player backend encountered an error when loading the audio file:\n{error}",
 		"migrationDialog": {
@@ -90,11 +90,11 @@
 		"page": {
 			"back": "Back"
 		},
-		"settings": "设置"
+		"settings": "Settings"
 	},
 	"error": {
-		"backToMainPage": "回到主页",
-		"copyError": "复制错误信息",
+		"backToMainPage": "Back to home",
+		"copyError": "Copy error details",
 		"desc0": "An error occurred during execution. Please try refreshing the page. If the issue persists, please contact the developer.",
 		"desc1": "If you know how to debug, you can see more precise error messages in the developer console.",
 		"errorDetail": "Error",
@@ -166,8 +166,8 @@
 			},
 			"playlistMenu": {
 				"delete": "Delete",
-				"play": "播放此列表",
-				"playShuffled": "以乱序播放此列表"
+				"play": "Play this playlist",
+				"playShuffled": "Shuffle play this playlist"
 			},
 			"updateAvailableTag": "Update available"
 		},
@@ -255,8 +255,8 @@
 			"noPlaylistResult": "No playlists found!",
 			"noSongResult": "No songs found!",
 			"placeholder": "Search for a song, artist, album, lyrics, playlists, or more",
-			"searchingPlaylist": "搜索播放列表中",
-			"searchPlaylistResultAmount": "搜索到 {amount} 个播放列表",
+			"searchingPlaylist": "Searching playlists",
+			"searchPlaylistResultAmount": "Found {amount} playlists",
 			"searchSongResultAmount": "Found {amount} songs"
 		},
 		"settings": {
@@ -267,15 +267,15 @@
 				},
 				"subtitle": "General",
 				"theme": {
-					"auto": "自动",
-					"dark": "深色",
-					"description": "选择应用的外观主题",
-					"label": "界面主题",
-					"light": "浅色"
+					"auto": "Auto",
+					"dark": "Dark",
+					"description": "Choose the app's appearance theme",
+					"label": "Appearance theme",
+					"light": "Light"
 				},
 				"windowAlwaysOnTop": {
-					"description": "将应用窗口设置为始终置顶",
-					"label": "启用窗口置顶"
+					"description": "Keep the app window always on top",
+					"label": "Always on top"
 				}
 			},
 			"lyricAppearance": {
@@ -296,16 +296,16 @@
 					"label": "Enable Text Spring Animation Effect"
 				},
 				"lyricFontSize": {
-					"descriptionResponsive": "设置歌词的字体大小",
-					"label": "歌词字体大小",
+					"descriptionResponsive": "Set the lyric font size",
+					"label": "Lyric font size",
 					"menu": {
-						"extra_large": "极大",
-						"extra_small": "极小",
-						"huge": "超大",
-						"large": "大",
-						"medium": "中",
-						"small": "小",
-						"tiny": "超小"
+						"extra_large": "Extra large",
+						"extra_small": "Extra small",
+						"huge": "Huge",
+						"large": "Large",
+						"medium": "Medium",
+						"small": "Small",
+						"tiny": "Tiny"
 					}
 				},
 				"lyricWordFadeWidth": {
@@ -319,8 +319,8 @@
 					"label": "PixiJS Renderer"
 				},
 				"lyricBackgroundColor": {
-					"description": "等同于放入 background 样式的字符串值，默认为 #111111",
-					"label": "CSS 背景属性值"
+					"description": "Equivalent to the string value set for the background style. Default is #111111",
+					"label": "CSS background property value"
 				},
 				"lyricBackgroundFPS": {
 					"description": "High impact on performance, but the actual cost is not significant. If you encounter performance issues, try to reduce this value. The default value is 60.",
@@ -335,7 +335,7 @@
 					"label": "Static Mode"
 				},
 				"menu": {
-					"cssBackground": "CSS 背景",
+					"cssBackground": "CSS background",
 					"meshGradientRenderer": "Mesh Gradient Renderer",
 					"pixiRenderer": "PixiJS Renderer"
 				},
@@ -436,8 +436,8 @@
 			},
 			"smtc": {
 				"enableMediaControls": {
-					"description": "目前只支持 Windows 的 SMTC",
-					"label": "启用内置播放器的媒体控件"
+					"description": "Currently only Windows SMTC is supported",
+					"label": "Enable media controls for the built-in player"
 				}
 			},
 			"taskbarLyric": {
@@ -536,7 +536,7 @@
 	},
 	"ws-protocol": {
 		"toast": {
-			"ttmlParseError": "解析来自 WS 发送端的 TTML 歌词时出错：{{error}}"
+			"ttmlParseError": "Error parsing TTML lyrics from the WS sender: {{error}}"
 		}
 	}
 }
