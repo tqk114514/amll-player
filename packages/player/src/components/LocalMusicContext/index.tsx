@@ -195,25 +195,29 @@ const LyricContext: FC = () => {
 	);
 
 	useEffect(() => {
-		syncLyrics().then((result) => {
-			switch (result.status) {
-				case SyncStatus.Updated:
-					console.log(
-						LYRIC_LOG_TAG,
-						`歌词库更新完成，新增 ${result.count} 个歌词`,
-					);
-					break;
-				// case SyncStatus.Skipped:
-				// 	console.log(LYRIC_LOG_TAG, "歌词库已是最新");
-				// 	break;
-				// case SyncStatus.Failed:
-				// 	console.warn(LYRIC_LOG_TAG, "歌词库同步失败", result.error);
-				// 	break;
-				// case SyncStatus.Empty:
-				// 	console.log(LYRIC_LOG_TAG, "远程歌词库为空");
-				// 	break;
-			}
-		});
+		syncLyrics()
+			.then((result) => {
+				switch (result.status) {
+					case SyncStatus.Updated:
+						console.log(
+							LYRIC_LOG_TAG,
+							`歌词库更新完成，新增 ${result.count} 个歌词`,
+						);
+						break;
+					// case SyncStatus.Skipped:
+					// 	console.log(LYRIC_LOG_TAG, "歌词库已是最新");
+					// 	break;
+					// case SyncStatus.Failed:
+					// 	console.warn(LYRIC_LOG_TAG, "歌词库同步失败", result.error);
+					// 	break;
+					// case SyncStatus.Empty:
+					// 	console.log(LYRIC_LOG_TAG, "远程歌词库为空");
+					// 	break;
+				}
+			})
+			.catch((e) => {
+				console.warn(LYRIC_LOG_TAG, "歌词库同步失败,继续使用本地歌词库", e);
+			});
 	}, []);
 
 	const { lyricLines, hasLyrics, metadata } = useLyricParser(

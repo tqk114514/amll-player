@@ -19,6 +19,8 @@ const CHUNK_RETRY_COUNT: usize = 3;
 const STATE_FLUSH_INTERVAL: u64 = 1024 * 1024;
 /// 进度汇报间隔,避免事件洪水
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+/// GitHub API 资产地址不带该头会返回 JSON 元数据而非二进制内容
+pub const DOWNLOAD_ACCEPT: &str = "application/octet-stream";
 
 /// 下载断点状态,持久化为 `<dest>.state`
 #[derive(Debug, Serialize, Deserialize)]
@@ -247,6 +249,7 @@ async fn probe_url(client: &reqwest::Client, url: &str) -> anyhow::Result<ProbeR
     let response = client
         .get(url)
         .header(reqwest::header::RANGE, "bytes=0-0")
+        .header(reqwest::header::ACCEPT, DOWNLOAD_ACCEPT)
         .send()
         .await
         .context("请求下载目标失败")?
@@ -368,6 +371,7 @@ async fn stream_chunk(
     let response = client
         .get(url)
         .header(reqwest::header::RANGE, format!("bytes={range_start}-{range_end}"))
+        .header(reqwest::header::ACCEPT, DOWNLOAD_ACCEPT)
         .send()
         .await?
         .error_for_status()?;

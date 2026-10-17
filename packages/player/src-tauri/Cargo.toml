@@ -20,7 +20,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 anyhow = "1.0"
-anyhow-tauri = "1.0.0"
+# show_errs_in_release: 生产构建也向前端暴露完整错误信息,便于诊断线上问题
+anyhow-tauri = { version = "1.0.0", features = ["show_errs_in_release"] }
 crossbeam-channel = "0.5.15"
 futures = "0.3.28"
 md5 = "0.8"
