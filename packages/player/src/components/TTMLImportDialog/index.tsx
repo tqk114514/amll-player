@@ -167,6 +167,7 @@ export const TTMLImportDialog: FC<{
 					</Trans>
 				</Dialog.Title>
 				<TextField.Root
+					name="ttml-import.search"
 					placeholder={t(
 						"amll.ttmlImportDialog.searchInput.placeholder",
 						"搜索歌曲、歌词内容、歌手等……",

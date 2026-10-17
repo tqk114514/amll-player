@@ -137,6 +137,7 @@ export const Component: FC = () => {
 					</Button>
 				</Flex>
 				<TextField.Root
+					name="search.filter"
 					placeholder={t(
 						"page.search.filter.placeholder",
 						"搜索歌单、歌名、歌手等信息……",

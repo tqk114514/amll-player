@@ -1,4 +1,5 @@
 import { MeshGradientRenderer } from "@applemusic-like-lyrics/core";
+import { musicCoverAtom } from "@applemusic-like-lyrics/react-full";
 import { ArrowLeftIcon, CodeIcon } from "@radix-ui/react-icons";
 import {
 	Card,
@@ -25,7 +26,6 @@ import {
 	useState,
 } from "react";
 import { useHideNowPlayingBar } from "../../utils/uses.ts";
-import { musicCoverAtom } from "@applemusic-like-lyrics/react-full";
 
 interface ControlPointHandleState {
 	color: [number, number, number];
@@ -115,6 +115,7 @@ const ControlPointHandle: FC<{
 					</Text>
 					<Text>横坐标</Text>
 					<TextField.Root
+						name={`mg-edit-${point.cpX}-${point.cpY}-x`}
 						type="number"
 						min={-1.0}
 						max={1.0}
@@ -126,6 +127,7 @@ const ControlPointHandle: FC<{
 					/>
 					<Text>纵坐标</Text>
 					<TextField.Root
+						name={`mg-edit-${point.cpX}-${point.cpY}-y`}
 						type="number"
 						min={-1.0}
 						max={1.0}
@@ -137,6 +139,7 @@ const ControlPointHandle: FC<{
 					/>
 					<Text>颜色</Text>
 					<input
+						name={`mg-edit-${point.cpX}-${point.cpY}-color`}
 						type="color"
 						value={`#${point.color
 							.slice(0, 3)
@@ -167,6 +170,7 @@ const ControlPointHandle: FC<{
 							}}
 						/>
 						<TextField.Root
+							name={`mg-edit-${point.cpX}-${point.cpY}-u-scale`}
 							type="number"
 							min={0}
 							max={5}
@@ -191,6 +195,7 @@ const ControlPointHandle: FC<{
 							}}
 						/>
 						<TextField.Root
+							name={`mg-edit-${point.cpX}-${point.cpY}-v-scale`}
 							type="number"
 							min={0}
 							max={5}
@@ -215,6 +220,7 @@ const ControlPointHandle: FC<{
 							}}
 						/>
 						<TextField.Root
+							name={`mg-edit-${point.cpX}-${point.cpY}-u-rot`}
 							type="number"
 							min={-90}
 							max={90}
@@ -239,6 +245,7 @@ const ControlPointHandle: FC<{
 							}}
 						/>
 						<TextField.Root
+							name={`mg-edit-${point.cpX}-${point.cpY}-v-rot`}
 							type="number"
 							min={-90}
 							max={90}

@@ -50,6 +50,7 @@ const RecordTab = () => {
 				<Flex align="center" justify="between" gap="2">
 					<Text as="span">录制宽度</Text>
 					<TextField.Root
+						name="screenshot.record.width"
 						disabled={!resizeWindow}
 						type="number"
 						value={targetWidth}
@@ -67,6 +68,7 @@ const RecordTab = () => {
 				<Flex align="center" justify="between" gap="2">
 					<Text as="span">录制高度</Text>
 					<TextField.Root
+						name="screenshot.record.height"
 						disabled={!resizeWindow}
 						type="number"
 						value={targetHeight}

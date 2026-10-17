@@ -97,6 +97,7 @@ const EditablePlaylistName: FC<{
 			)}
 			{editing && (
 				<TextField.Root
+					name="playlist.rename"
 					value={newName}
 					autoFocus
 					onChange={(e) => setNewName(e.target.value)}
@@ -823,6 +824,7 @@ export const Component: FC = () => {
 								{t("page.playlist.settings.name", "歌单名称")}
 							</Text>
 							<TextField.Root
+								name="playlist.settings-name"
 								value={settingsPlaylistName}
 								onChange={(e) => setSettingsPlaylistName(e.currentTarget.value)}
 								onBlur={saveSettingsPlaylistName}

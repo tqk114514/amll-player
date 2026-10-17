@@ -141,6 +141,7 @@ export const LyricTabContent: FC = () => {
 			<Flex direction="column" gap="4">
 				<Option label={t("page.song.lyric.lyricFormatLabel", "歌词格式")}>
 					<Select.Root
+						name="song.lyric-format"
 						defaultValue="none"
 						value={lyricFormat}
 						onValueChange={(v) => setLyricFormat(v)}

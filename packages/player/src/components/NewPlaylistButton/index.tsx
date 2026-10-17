@@ -98,12 +98,14 @@ export const NewPlaylistButton: FC = () => {
 						<Trans i18nKey="newPlaylist.dialog.name">歌单名称</Trans>
 					</Text>
 					<TextField.Root
+						name="new-playlist.name"
 						placeholder={t("newPlaylist.dialog.namePlaceholder", "歌单名称")}
 						value={name}
 						onChange={(e) => setName(e.currentTarget.value)}
 						autoFocus
 					/>
 					<Select.Root
+						name="new-playlist.source"
 						value={mode}
 						onValueChange={(v) => setMode(v as CreateMode)}
 					>

@@ -119,16 +119,19 @@ export const MetadataTabContent: FC = () => {
 			</Callout.Root>
 			<Flex direction="column" gap="4">
 				<MetaInput
+					name="song.metadata.song-name"
 					label={t("page.song.metadata.songName", "音乐名称")}
 					value={songName}
 					onChange={(v) => setSongName(v.currentTarget.value)}
 				/>
 				<MetaInput
+					name="song.metadata.song-artists"
 					label={t("page.song.metadata.songArtists", "音乐作者")}
 					value={songArtists}
 					onChange={(v) => setSongArtists(v.currentTarget.value)}
 				/>
 				<MetaInput
+					name="song.metadata.song-album"
 					label={t("page.song.metadata.songAlbum", "音乐专辑名")}
 					value={songAlbum}
 					onChange={(v) => setSongAlbum(v.currentTarget.value)}

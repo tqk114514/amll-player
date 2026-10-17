@@ -62,6 +62,7 @@ export const Component: FC = () => {
 						</Text>
 					</Box>
 					<TextField.Root
+						name="ws.listen-addr"
 						type="url"
 						placeholder="0.0.0.0:11444"
 						value={wsProtocolListenAddr}

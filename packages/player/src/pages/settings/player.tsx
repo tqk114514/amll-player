@@ -87,8 +87,8 @@ import {
 	taskbarLyricThemeSettingAtom,
 	updateInfoAtom,
 } from "../../states/appAtoms.ts";
-import { restartApp } from "../../utils/player.ts";
 import type { DownloadEvent } from "../../states/updater";
+import { restartApp } from "../../utils/player.ts";
 import styles from "./index.module.css";
 
 const SettingEntry: FC<
@@ -196,10 +196,11 @@ const LyricFontSetting: FC = () => {
 						</Trans>
 					</Text>
 				</Flex>
-				<TextField.Root
-					value={fontFamily}
-					onChange={(e) => setFontFamily(e.currentTarget.value)}
-				/>
+			<TextField.Root
+				name="settings.lyric.font-family"
+				value={fontFamily}
+				onChange={(e) => setFontFamily(e.currentTarget.value)}
+			/>
 			</Flex>
 			<Flex direction="row" align="center" gap="4" my="2" wrap="wrap">
 				<Flex direction="column" flexGrow="1">
@@ -214,10 +215,11 @@ const LyricFontSetting: FC = () => {
 						</Trans>
 					</Text>
 				</Flex>
-				<TextField.Root
-					value={fontWeight}
-					type="number"
-					min={0}
+			<TextField.Root
+				name="settings.lyric.font-weight"
+				value={fontWeight}
+				type="number"
+				min={0}
 					max={1000}
 					onChange={(e) => setFontWeight(e.currentTarget.valueAsNumber)}
 				/>
@@ -242,10 +244,11 @@ const LyricFontSetting: FC = () => {
 						</Trans>
 					</Text>
 				</Flex>
-				<TextField.Root
-					value={letterSpacing}
-					onChange={(e) => setLetterSpacing(e.currentTarget.value)}
-				/>
+			<TextField.Root
+				name="settings.lyric.letter-spacing"
+				value={letterSpacing}
+				onChange={(e) => setLetterSpacing(e.currentTarget.value)}
+			/>
 			</Flex>
 			<Flex direction="row" align="center" gap="4" my="2" wrap="wrap">
 				<Flex direction="column" flexGrow="1">
@@ -255,10 +258,11 @@ const LyricFontSetting: FC = () => {
 						</Trans>
 					</Text>
 				</Flex>
-				<TextField.Root
-					value={preview}
-					onChange={(e) => setPreview(e.currentTarget.value)}
-				/>
+			<TextField.Root
+				name="settings.lyric.preview"
+				value={preview}
+				onChange={(e) => setPreview(e.currentTarget.value)}
+			/>
 			</Flex>
 			<Box
 				style={{
@@ -340,7 +344,11 @@ const GeneralSettings = () => {
 			<SettingEntry
 				label={t("page.settings.general.displayLanguage.label", "显示语言")}
 			>
-				<Select.Root value={language} onValueChange={setLanguage}>
+				<Select.Root
+					name="settings.display-language"
+					value={language}
+					onValueChange={setLanguage}
+				>
 					<Select.Trigger />
 					<Select.Content>
 						{supportedLanguages.map((item) => (
@@ -358,7 +366,11 @@ const GeneralSettings = () => {
 					"选择应用的外观主题",
 				)}
 			>
-				<Select.Root value={mode} onValueChange={(v) => setMode(v as DarkMode)}>
+				<Select.Root
+					name="settings.theme"
+					value={mode}
+					onValueChange={(v) => setMode(v as DarkMode)}
+				>
 					<Select.Trigger />
 					<Select.Content>
 						{themeMenu.map((item) => (
@@ -477,6 +489,7 @@ const LyricContentSettings = () => {
 				)}
 			>
 				<Select.Root
+					name="settings.taskbar-lyric.display-mode"
 					value={bottomLyricDisplayMode}
 					onValueChange={(v) =>
 						setBottomLyricDisplayMode(v as BottomLyricDisplayMode)
@@ -572,6 +585,7 @@ const LyricAppearanceSettings = () => {
 				)}
 			>
 				<Select.Root
+					name="settings.lyric.size"
 					value={lyricSize}
 					onValueChange={(value) => setLyricSize(value as LyricSizePreset)}
 				>
@@ -630,6 +644,7 @@ const LyricAppearanceSettings = () => {
 				configAtom={advanceLyricDynamicLyricTimeAtom}
 			/>
 			<NumberSettings
+				name="settings.lyric.advance-lyric-dynamic-time"
 				placeholder="0.5"
 				type="number"
 				min="0"
@@ -775,6 +790,7 @@ const MusicInfoAppearanceSettings = () => {
 				)}
 			>
 				<Select.Root
+					name="settings.lyric.player-controls"
 					value={playerControlsType}
 					onValueChange={(v) => setPlayerControlsType(v as PlayerControlsType)}
 				>
@@ -800,6 +816,7 @@ const MusicInfoAppearanceSettings = () => {
 				)}
 			>
 				<Select.Root
+					name="settings.lyric.vertical-cover-layout"
 					value={verticalCoverLayout}
 					onValueChange={(v) =>
 						setVerticalCoverLayout(v as VerticalCoverLayout)
@@ -917,6 +934,7 @@ const LyricBackgroundSettings = () => {
 				)}
 			>
 				<Select.Root
+					name="settings.lyric.background-renderer"
 					value={getBackgroundRendererString(backgroundRendererValue)}
 					onValueChange={handleBackgroundRendererChange}
 				>
@@ -943,6 +961,7 @@ const LyricBackgroundSettings = () => {
 					)}
 				>
 					<TextField.Root
+						name="settings.lyric.css-background"
 						value={cssBackgroundProperty}
 						onChange={(e) => setCssBackgroundProperty(e.currentTarget.value)}
 					/>
@@ -950,6 +969,7 @@ const LyricBackgroundSettings = () => {
 			) : (
 				<>
 					<NumberSettings
+						name="settings.lyric-background.fps"
 						placeholder="60"
 						type="number"
 						min="1"
@@ -966,6 +986,7 @@ const LyricBackgroundSettings = () => {
 						configAtom={lyricBackgroundFPSAtom}
 					/>
 					<NumberSettings
+						name="settings.lyric-background.render-scale"
 						placeholder="1.0"
 						type="number"
 						min="0.01"
@@ -1075,6 +1096,7 @@ const TaskbarLyricSettings = () => {
 				)}
 			>
 				<Select.Root
+					name="settings.taskbar-lyric.theme"
 					value={themeSetting}
 					onValueChange={(v) => setThemeSetting(v as "auto" | "dark" | "light")}
 				>
@@ -1101,6 +1123,7 @@ const TaskbarLyricSettings = () => {
 				)}
 			>
 				<Select.Root
+					name="settings.taskbar-lyric.align"
 					value={alignSetting}
 					onValueChange={(v) => setAlignSetting(v as "auto" | "left" | "right")}
 				>
@@ -1123,6 +1146,7 @@ const TaskbarLyricSettings = () => {
 				label={t("page.settings.taskbarLyric.mode.label", "歌词行数")}
 			>
 				<Select.Root
+					name="settings.taskbar-lyric.mode"
 					value={modeSetting}
 					onValueChange={(v) =>
 						setModeSetting(v as "auto" | "single" | "double")

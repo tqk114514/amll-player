@@ -47,6 +47,7 @@ const LosslessScreenshotTab = () => {
 				<Flex align="center" justify="between" gap="2">
 					<Text as="span">截图宽度</Text>
 					<TextField.Root
+						name="screenshot.lossless.width"
 						disabled={!resizeWindow}
 						type="number"
 						value={targetWidth}
@@ -64,6 +65,7 @@ const LosslessScreenshotTab = () => {
 				<Flex align="center" justify="between" gap="2">
 					<Text as="span">截图高度</Text>
 					<TextField.Root
+						name="screenshot.lossless.height"
 						disabled={!resizeWindow}
 						type="number"
 						value={targetHeight}
