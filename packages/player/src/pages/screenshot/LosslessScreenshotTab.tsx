@@ -169,7 +169,7 @@ const LosslessScreenshotTab = () => {
 							})
 							.catch((err) => {
 								toast.error(
-									t("page.screenshot.copyImageFailed", "复制图片失败: {error}", {
+									t("page.screenshot.copyImageFailed", {
 										error: err.message,
 									}),
 								);
@@ -180,10 +180,11 @@ const LosslessScreenshotTab = () => {
 					</Button>
 				<Button
 					onClick={async () => {
+						const svgEl = document.getElementById(
+							"output",
+						) as SVGSVGElement | null;
 						if (!svgEl) {
-							toast.error(
-								t("page.screenshot.elementNotFoundAfterRecord"),
-							);
+							toast.error(t("page.screenshot.elementNotFoundAfterRecord"));
 							return;
 						}
 						const canvas = document.createElement("canvas");
@@ -191,9 +192,7 @@ const LosslessScreenshotTab = () => {
 						canvas.height = targetHeight + 200;
 						const ctx = canvas.getContext("2d");
 						if (!ctx) {
-							toast.error(
-								t("page.screenshot.canvasContextFailed"),
-							);
+							toast.error(t("page.screenshot.canvasContextFailed"));
 							return;
 						}
 						const img = new Image();
@@ -206,39 +205,32 @@ const LosslessScreenshotTab = () => {
 											"image/png": blob as Blob,
 										}),
 									])
-								.then(() => {
-									toast.success(
-										t("page.screenshot.copyImageSuccess"),
-										{
+									.then(() => {
+										toast.success(t("page.screenshot.copyImageSuccess"), {
 											autoClose: 2000,
 											pauseOnFocusLoss: false,
 											pauseOnHover: false,
-										},
-									);
-								})
-								.catch((err) => {
-									toast.error(
-										t("page.screenshot.copyImageFailed", "复制图片失败: {error}", {
-											error: err.message,
-										}),
-									);
-								});
+										});
+									})
+									.catch((err) => {
+										toast.error(
+											t("page.screenshot.copyImageFailed", {
+												error: err.message,
+											}),
+										);
+									});
 							});
 						};
-									img.onerror = (err) => {
-										toast.error(
-											t(
-												"page.screenshot.loadImageFailed",
-												"加载图片失败: {error}",
-												{ error: String(err) },
-											),
-										);
-									};
-									const svgData = new XMLSerializer().serializeToString(svgEl);
-									img.src = `data:image/svg+xml;base64,${btoa(svgData)}`;
-								}}
-							>
-								{t("page.screenshot.copyImageWithShadowButton")}
+						img.onerror = (err) => {
+							toast.error(
+								t("page.screenshot.loadImageFailed", { error: String(err) }),
+							);
+						};
+						const svgData = new XMLSerializer().serializeToString(svgEl);
+						img.src = `data:image/svg+xml;base64,${btoa(svgData)}`;
+					}}
+				>
+					{t("page.screenshot.copyImageWithShadowButton")}
 							</Button>
 			</Flex>
 			<Flex align="center" justify="center" flexGrow="1" overflow="hidden">

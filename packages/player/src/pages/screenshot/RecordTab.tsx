@@ -205,7 +205,7 @@ const RecordTab = () => {
 							})
 							.catch((err) => {
 								toast.error(
-									t("page.screenshot.copyImageFailed", "复制图片失败: {error}", {
+									t("page.screenshot.copyImageFailed", {
 										error: err.message,
 									}),
 								);
@@ -216,10 +216,11 @@ const RecordTab = () => {
 					</Button>
 				<Button
 					onClick={async () => {
+						const svgEl = document.getElementById(
+							"output",
+						) as SVGSVGElement | null;
 						if (!svgEl) {
-							toast.error(
-								t("page.screenshot.elementNotFoundAfterRecord"),
-							);
+							toast.error(t("page.screenshot.elementNotFoundAfterRecord"));
 							return;
 						}
 						const canvas = document.createElement("canvas");
@@ -243,20 +244,24 @@ const RecordTab = () => {
 										}),
 									])
 									.then(() => {
-										toast.success("图片已复制到剪贴板！", {
+										toast.success(t("page.screenshot.copyImageSuccess"), {
 											autoClose: 2000,
 											pauseOnFocusLoss: false,
 											pauseOnHover: false,
 										});
 									})
 									.catch((err) => {
-										toast.error(`复制图片失败: ${err.message}`);
+										toast.error(
+											t("page.screenshot.copyImageFailed", {
+												error: err.message,
+											}),
+										);
 									});
 							});
 						};
 						img.onerror = (err) => {
 							toast.error(
-								t("page.screenshot.loadImageFailed", "加载图片失败: {error}", {
+								t("page.screenshot.loadImageFailed", {
 									error: String(err),
 								}),
 							);
