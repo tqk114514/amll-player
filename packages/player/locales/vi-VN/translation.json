@@ -515,6 +515,35 @@
 				"openNetworkAddress": "Địa chỉ mạng mở",
 				"tip": "Sau khi kết nối với máy khách, có thể cần chuyển bài một lần để đồng bộ trạng thái bài hát. Nếu muốn mở cho mạng ngoài, hãy đặt Host là 0.0.0.0."
 			}
+		},
+		"screenshot": {
+			"experimentalCallout": "Tính năng này chỉ hỗ trợ Windows (WebView2) và đang ở giai đoạn thử nghiệm cao",
+			"description": "Tính năng này sẽ cố gắng chụp nội dung cửa sổ trình phát thông qua DevTools API. Đừng thao tác với trình phát khi chụp以免 ảnh hưởng đến kết quả.",
+			"pixelUnit": "điểm ảnh",
+			"takeScreenshotLoading": "Đang chụp màn hình, vui lòng chờ...",
+			"takeScreenshotSuccess": "Chụp màn hình thành công!",
+			"takeScreenshotButton": "Chụp màn hình",
+			"copyImageButton": "Sao chép ảnh",
+			"copyImageSuccess": "Đã sao chép ảnh vào bộ nhớ tạm!",
+			"copyImageFailed": "Sao chép ảnh thất bại: {error}",
+			"copyImageWithShadowButton": "Sao chép ảnh (kèm bóng đổ)",
+			"canvasContextFailed": "Không thể lấy ngữ cảnh canvas, vui lòng thử lại sau.",
+			"loadImageFailed": "Tải ảnh thất bại: {error}",
+			"elementNotFoundAfterRecord": "Không tìm thấy phần tử chụp màn hình, hãy đảm bảo việc ghi hình đã thành công.",
+			"elementNotFoundAfterLossless": "Không tìm thấy phần tử chụp màn hình, hãy đảm bảo việc chụp đã thành công.",
+			"record": {
+				"resizeWindowLabel": "Đổi kích thước cửa sổ",
+				"widthLabel": "Chiều rộng ghi hình",
+				"heightLabel": "Chiều cao ghi hình",
+				"recoverSizeLabel": "Khôi phục kích thước cửa sổ sau khi ghi",
+				"switchSource": "Chuyển nguồn ghi hình"
+			},
+			"lossless": {
+				"resizeWindowLabel": "Đổi kích thước cửa sổ",
+				"widthLabel": "Chiều rộng chụp màn hình",
+				"heightLabel": "Chiều cao chụp màn hình",
+				"recoverSizeLabel": "Khôi phục kích thước cửa sổ sau khi chụp"
+			}
 		}
 	},
 	"playbar": {

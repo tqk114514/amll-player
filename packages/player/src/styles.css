@@ -15,6 +15,13 @@
 		--toastify-toast-shadow: none;
 	}
 
+	/* 弹窗关闭时内容与遮罩同帧移除:Radix 默认会让遮罩残留 160ms
+	   淡出,底下内容先变暗再恢复,形成高亮闪烁 */
+	.rt-BaseDialogOverlay:where([data-state='closed'])::before,
+	.rt-BaseDialogContent:where([data-state='closed']) {
+		animation: none;
+	}
+
 	:root {
 		--amll-font-family:
 			-apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;

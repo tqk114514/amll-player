@@ -515,6 +515,35 @@
 				"openNetworkAddress": "Open network address",
 				"tip": "When connect to client, you may switch track once to synchronous data. If you want to open to external network, please set host to \"0.0.0.0\"."
 			}
+		},
+		"screenshot": {
+			"experimentalCallout": "This feature only supports Windows (WebView2) and is highly experimental",
+			"description": "This feature will attempt to capture the player window's content through the DevTools API. Do not interact with the player during capture, as it may affect the result.",
+			"pixelUnit": "px",
+			"takeScreenshotLoading": "Taking screenshot, please wait...",
+			"takeScreenshotSuccess": "Screenshot taken!",
+			"takeScreenshotButton": "Screenshot",
+			"copyImageButton": "Copy image",
+			"copyImageSuccess": "Image copied to clipboard!",
+			"copyImageFailed": "Failed to copy image: {error}",
+			"copyImageWithShadowButton": "Copy image (with shadow)",
+			"canvasContextFailed": "Failed to get canvas context, please try again later.",
+			"loadImageFailed": "Failed to load image: {error}",
+			"elementNotFoundAfterRecord": "Screenshot element not found, please make sure the recording succeeded.",
+			"elementNotFoundAfterLossless": "Screenshot element not found, please make sure the screenshot succeeded.",
+			"record": {
+				"resizeWindowLabel": "Resize window",
+				"widthLabel": "Recording width",
+				"heightLabel": "Recording height",
+				"recoverSizeLabel": "Restore window size after recording",
+				"switchSource": "Switch capture source"
+			},
+			"lossless": {
+				"resizeWindowLabel": "Resize window",
+				"widthLabel": "Screenshot width",
+				"heightLabel": "Screenshot height",
+				"recoverSizeLabel": "Restore window size after screenshot"
+			}
 		}
 	},
 	"playbar": {

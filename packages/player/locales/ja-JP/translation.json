@@ -515,6 +515,35 @@
 				"openNetworkAddress": "公開ネットワークアドレス",
 				"tip": "クライアント接続後、曲情報の状態を同期するには一度曲を切り替える必要がある場合があります。外部ネットワークに公開する場合は Host を 0.0.0.0 に設定してください。"
 			}
+		},
+		"screenshot": {
+			"experimentalCallout": "この機能は Windows (WebView2) のみサポートしており、高度に実験的です",
+			"description": "この機能は DevTools API 経由でプレイヤーウィンドウの内容をキャプチャしようとします。キャプチャ中はプレイヤーを操作しないでください。結果に影響します。",
+			"pixelUnit": "ピクセル",
+			"takeScreenshotLoading": "スクリーンショットを撮影中です。お待ちください...",
+			"takeScreenshotSuccess": "スクリーンショットに成功しました！",
+			"takeScreenshotButton": "スクリーンショット",
+			"copyImageButton": "画像をコピー",
+			"copyImageSuccess": "画像をクリップボードにコピーしました！",
+			"copyImageFailed": "画像のコピーに失敗しました: {error}",
+			"copyImageWithShadowButton": "影付きで画像をコピー",
+			"canvasContextFailed": "キャンバスコンテキストを取得できませんでした。しばらくしてからもう一度お試しください。",
+			"loadImageFailed": "画像の読み込みに失敗しました: {error}",
+			"elementNotFoundAfterRecord": "スクリーンショット要素が見つかりません。録画が成功していることを確認してください。",
+			"elementNotFoundAfterLossless": "スクリーンショット要素が見つかりません。スクリーンショットが成功していることを確認してください。",
+			"record": {
+				"resizeWindowLabel": "ウィンドウサイズを変更",
+				"widthLabel": "録画の幅",
+				"heightLabel": "録画の高さ",
+				"recoverSizeLabel": "録画後にウィンドウサイズを復元",
+				"switchSource": "キャプチャソースを切り替え"
+			},
+			"lossless": {
+				"resizeWindowLabel": "ウィンドウサイズを変更",
+				"widthLabel": "スクリーンショットの幅",
+				"heightLabel": "スクリーンショットの高さ",
+				"recoverSizeLabel": "スクリーンショット後にウィンドウサイズを復元"
+			}
 		}
 	},
 	"playbar": {

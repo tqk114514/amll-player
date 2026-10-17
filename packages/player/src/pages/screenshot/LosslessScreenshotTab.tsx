@@ -9,6 +9,7 @@ import {
 import { useAtom } from "jotai";
 import { useState } from "react";
 import { toast } from "react-toastify";
+import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import {
 	resizeWindowAtom,
@@ -18,6 +19,7 @@ import {
 } from "./states.ts";
 
 const LosslessScreenshotTab = () => {
+	const { t } = useTranslation();
 	const [resizeWindow, setResizeWindow] = useAtom(resizeWindowAtom);
 	const [targetWidth, setTargetWidth] = useAtom(targetWidthAtom);
 	const [targetHeight, setTargetHeight] = useAtom(targetHeightAtom);
@@ -31,21 +33,24 @@ const LosslessScreenshotTab = () => {
 	return (
 		<Flex direction="column" pt="2" gap="2" height="100%" overflow="hidden">
 			<Callout.Root color="orange">
-				本功能仅支持 Windows (WebView2) 且高度实验性
+				{t("page.screenshot.experimentalCallout")}
 			</Callout.Root>
 			<Text as="p">
-				本功能将会尝试通过 DevTools API
-				截取播放器窗口的画面内容，截图时请勿操作播放器，以免影响截图效果。
+				{t("page.screenshot.description")}
 			</Text>
 			<Text as="label">
 				<Flex align="center" justify="between" gap="2">
-					<Text as="span">修改窗口大小</Text>
+					<Text as="span">
+						{t("page.screenshot.lossless.resizeWindowLabel")}
+					</Text>
 					<Switch checked={resizeWindow} onCheckedChange={setResizeWindow} />
 				</Flex>
 			</Text>
 			<Text as="label">
 				<Flex align="center" justify="between" gap="2">
-					<Text as="span">截图宽度</Text>
+					<Text as="span">
+						{t("page.screenshot.lossless.widthLabel")}
+					</Text>
 					<TextField.Root
 						name="screenshot.lossless.width"
 						disabled={!resizeWindow}
@@ -57,13 +62,17 @@ const LosslessScreenshotTab = () => {
 						step={1}
 					>
 						<TextField.Slot />
-						<TextField.Slot>像素</TextField.Slot>
+						<TextField.Slot>
+							{t("page.screenshot.pixelUnit")}
+						</TextField.Slot>
 					</TextField.Root>
 				</Flex>
 			</Text>
 			<Text as="label">
 				<Flex align="center" justify="between" gap="2">
-					<Text as="span">截图高度</Text>
+					<Text as="span">
+						{t("page.screenshot.lossless.heightLabel")}
+					</Text>
 					<TextField.Root
 						name="screenshot.lossless.height"
 						disabled={!resizeWindow}
@@ -75,13 +84,17 @@ const LosslessScreenshotTab = () => {
 						step={1}
 					>
 						<TextField.Slot />
-						<TextField.Slot>像素</TextField.Slot>
+						<TextField.Slot>
+							{t("page.screenshot.pixelUnit")}
+						</TextField.Slot>
 					</TextField.Root>
 				</Flex>
 			</Text>
 			<Text as="label">
 				<Flex align="center" justify="between" gap="2">
-					<Text as="span">截图后恢复窗口大小</Text>
+					<Text as="span">
+						{t("page.screenshot.lossless.recoverSizeLabel")}
+					</Text>
 					<Switch
 						disabled={!resizeWindow}
 						checked={recoverWindowSize}
@@ -92,7 +105,9 @@ const LosslessScreenshotTab = () => {
 			<Flex gap="2" justify="center">
 				<Button
 					onClick={async () => {
-						const p = toast.loading("正在截图，请稍候...");
+						const p = toast.loading(
+							t("page.screenshot.takeScreenshotLoading"),
+						);
 						const data = (await invoke("take_screenshot", {
 							targetWidth,
 							targetHeight,
@@ -108,7 +123,7 @@ const LosslessScreenshotTab = () => {
 							setScreenshotData(uri);
 
 							toast.update(p, {
-								render: "截图成功！",
+								render: t("page.screenshot.takeScreenshotSuccess"),
 								type: "success",
 								isLoading: false,
 								autoClose: 2000,
@@ -118,14 +133,16 @@ const LosslessScreenshotTab = () => {
 						};
 					}}
 				>
-					截图
+					{t("page.screenshot.takeScreenshotButton")}
 				</Button>
 			</Flex>
 			<Flex gap="2" justify="center">
 				<Button
 					onClick={async () => {
 						if (!screenshotData) {
-							toast.error("无法找到截图元素，请确保已成功截图。");
+							toast.error(
+								t("page.screenshot.elementNotFoundAfterLossless"),
+							);
 							return;
 						}
 						const data = atob(screenshotData.slice(22));
@@ -141,26 +158,32 @@ const LosslessScreenshotTab = () => {
 								}),
 							])
 							.then(() => {
-								toast.success("图片已复制到剪贴板！", {
-									autoClose: 2000,
-									pauseOnFocusLoss: false,
-									pauseOnHover: false,
-								});
+								toast.success(
+									t("page.screenshot.copyImageSuccess"),
+									{
+										autoClose: 2000,
+										pauseOnFocusLoss: false,
+										pauseOnHover: false,
+									},
+								);
 							})
 							.catch((err) => {
-								toast.error(`复制图片失败: ${err.message}`);
+								toast.error(
+									t("page.screenshot.copyImageFailed", "复制图片失败: {error}", {
+										error: err.message,
+									}),
+								);
 							});
-					}}
-				>
-					复制图片
-				</Button>
+						}}
+					>
+						{t("page.screenshot.copyImageButton")}
+					</Button>
 				<Button
 					onClick={async () => {
-						const svgEl = document.getElementById(
-							"output",
-						) as SVGSVGElement | null;
 						if (!svgEl) {
-							toast.error("无法找到截图元素，请确保已成功录制。");
+							toast.error(
+								t("page.screenshot.elementNotFoundAfterRecord"),
+							);
 							return;
 						}
 						const canvas = document.createElement("canvas");
@@ -168,7 +191,9 @@ const LosslessScreenshotTab = () => {
 						canvas.height = targetHeight + 200;
 						const ctx = canvas.getContext("2d");
 						if (!ctx) {
-							toast.error("无法获取画布上下文，请稍后再试。");
+							toast.error(
+								t("page.screenshot.canvasContextFailed"),
+							);
 							return;
 						}
 						const img = new Image();
@@ -181,27 +206,40 @@ const LosslessScreenshotTab = () => {
 											"image/png": blob as Blob,
 										}),
 									])
-									.then(() => {
-										toast.success("图片已复制到剪贴板！", {
+								.then(() => {
+									toast.success(
+										t("page.screenshot.copyImageSuccess"),
+										{
 											autoClose: 2000,
 											pauseOnFocusLoss: false,
 											pauseOnHover: false,
-										});
-									})
-									.catch((err) => {
-										toast.error(`复制图片失败: ${err.message}`);
-									});
+										},
+									);
+								})
+								.catch((err) => {
+									toast.error(
+										t("page.screenshot.copyImageFailed", "复制图片失败: {error}", {
+											error: err.message,
+										}),
+									);
+								});
 							});
 						};
-						img.onerror = (err) => {
-							toast.error(`加载图片失败: ${err}`);
-						};
-						const svgData = new XMLSerializer().serializeToString(svgEl);
-						img.src = `data:image/svg+xml;base64,${btoa(svgData)}`;
-					}}
-				>
-					复制图片（带阴影）
-				</Button>
+									img.onerror = (err) => {
+										toast.error(
+											t(
+												"page.screenshot.loadImageFailed",
+												"加载图片失败: {error}",
+												{ error: String(err) },
+											),
+										);
+									};
+									const svgData = new XMLSerializer().serializeToString(svgEl);
+									img.src = `data:image/svg+xml;base64,${btoa(svgData)}`;
+								}}
+							>
+								{t("page.screenshot.copyImageWithShadowButton")}
+							</Button>
 			</Flex>
 			<Flex align="center" justify="center" flexGrow="1" overflow="hidden">
 				<svg

@@ -515,6 +515,35 @@
 				"openNetworkAddress": "開放網路位址",
 				"tip": "連接到客戶端後，可能需要切換一次歌曲方可同步歌曲資訊狀態。如需對外部網路開放，請將 Host 設定成 0.0.0.0。"
 			}
+		},
+		"screenshot": {
+			"experimentalCallout": "本功能僅支援 Windows (WebView2) 且高度實驗性",
+			"description": "本功能將會嘗試透過 DevTools API 擷取播放器視窗的畫面內容，截圖時請勿操作播放器，以免影響截圖效果。",
+			"pixelUnit": "像素",
+			"takeScreenshotLoading": "正在截圖，請稍候...",
+			"takeScreenshotSuccess": "截圖成功！",
+			"takeScreenshotButton": "截圖",
+			"copyImageButton": "複製圖片",
+			"copyImageSuccess": "圖片已複製到剪貼簿！",
+			"copyImageFailed": "複製圖片失敗: {error}",
+			"copyImageWithShadowButton": "複製圖片（含陰影）",
+			"canvasContextFailed": "無法取得畫布上下文，請稍後再試。",
+			"loadImageFailed": "載入圖片失敗: {error}",
+			"elementNotFoundAfterRecord": "找不到截圖元素，請確認已成功錄製。",
+			"elementNotFoundAfterLossless": "找不到截圖元素，請確認已成功截圖。",
+			"record": {
+				"resizeWindowLabel": "修改視窗大小",
+				"widthLabel": "錄製寬度",
+				"heightLabel": "錄製高度",
+				"recoverSizeLabel": "錄製後恢復視窗大小",
+				"switchSource": "切換錄製來源"
+			},
+			"lossless": {
+				"resizeWindowLabel": "修改視窗大小",
+				"widthLabel": "截圖寬度",
+				"heightLabel": "截圖高度",
+				"recoverSizeLabel": "截圖後恢復視窗大小"
+			}
 		}
 	},
 	"playbar": {
