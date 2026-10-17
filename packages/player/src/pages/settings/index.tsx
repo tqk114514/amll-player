@@ -235,6 +235,18 @@ export const Component: FC = () => {
 		setMenuOpen(false);
 	};
 
+	useEffect(() => {
+		// 主页的更新提醒通过 /settings#updater 深链跳转,落到"关于"页并滚动到更新区块
+		if (window.location.hash === "#updater") {
+			setCurrentPage("player.about");
+			setTimeout(
+				() => document.getElementById("updater")?.scrollIntoView(),
+				100,
+			);
+			history.replaceState(null, "", window.location.pathname);
+		}
+	}, [setCurrentPage]);
+
 	const renderContent = () => {
 		if (currentPage.startsWith("player.")) {
 			const category = currentPage.split(".")[1];

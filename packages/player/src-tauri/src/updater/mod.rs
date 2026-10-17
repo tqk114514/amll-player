@@ -14,10 +14,6 @@ use tracing::*;
 pub mod download;
 pub mod install;
 
-/// 更新清单地址,由 CI 的 tauri-action 生成并随 main-player-dev 发布
-const UPDATE_ENDPOINT: &str =
-    "https://github.com/tqk114514/amll-player/releases/download/main-player-dev/latest.json";
-
 const USER_AGENT: &str = concat!("amll-player/", env!("CARGO_PKG_VERSION"));
 
 /// 分块下载允许的最大并发连接数,实际按文件大小自动分配
@@ -145,40 +141,12 @@ fn read_pubkey<R: Runtime>(app: &AppHandle<R>) -> anyhow::Result<String> {
     Ok(pubkey.clone())
 }
 
-/// GitHub API 形式的发布地址:github.com 网络不可达时的回退通道,
-/// 更新产物本就通过 api.github.com 分发,连通性通常更好
+/// 更新清单与安装包同在 Release 资产中,统一走 api.github.com 分发:
+/// 该域名的连通性通常好于 github.com,且资产地址本身就在此域名下
 const RELEASE_API_ENDPOINT: &str =
     "https://api.github.com/repos/tqk114514/amll-player/releases/tags/main-player-dev";
 
 async fn fetch_latest() -> anyhow::Result<LatestRelease> {
-    match fetch_latest_from_endpoint(UPDATE_ENDPOINT, "application/json").await {
-        Ok(release) => Ok(release),
-        Err(primary) => {
-            warn!("更新清单主端点拉取失败,回退到 GitHub API: {primary:#}");
-            fetch_latest_via_api().await
-        }
-    }
-}
-
-async fn fetch_latest_from_endpoint(
-    endpoint: &str,
-    accept: &str,
-) -> anyhow::Result<LatestRelease> {
-    let response = reqwest::Client::new()
-        .get(endpoint)
-        .header(reqwest::header::USER_AGENT, USER_AGENT)
-        .header(reqwest::header::ACCEPT, accept)
-        .send()
-        .await
-        .context("请求更新清单失败")?
-        .error_for_status()
-        .context("更新清单请求被拒绝")?;
-    Ok(response.json().await.context("解析更新清单失败")?)
-}
-
-/// 通过 GitHub API 的 Release 资产拉取清单:
-/// latest.json 与安装包同在 Release 资产里,资产地址走 api.github.com
-async fn fetch_latest_via_api() -> anyhow::Result<LatestRelease> {
     let release: serde_json::Value = reqwest::Client::new()
         .get(RELEASE_API_ENDPOINT)
         .header(reqwest::header::USER_AGENT, USER_AGENT)
@@ -204,7 +172,16 @@ async fn fetch_latest_via_api() -> anyhow::Result<LatestRelease> {
         .get("url")
         .and_then(serde_json::Value::as_str)
         .context("latest.json 资产缺少 url 字段")?;
-    fetch_latest_from_endpoint(url, download::DOWNLOAD_ACCEPT).await
+    let response = reqwest::Client::new()
+        .get(url)
+        .header(reqwest::header::USER_AGENT, USER_AGENT)
+        .header(reqwest::header::ACCEPT, download::DOWNLOAD_ACCEPT)
+        .send()
+        .await
+        .context("请求更新清单资产失败")?
+        .error_for_status()
+        .context("更新清单资产请求被拒绝")?;
+    Ok(response.json().await.context("解析更新清单失败")?)
 }
 
 /// 返回当前平台的更新清单键名前缀,如 ("windows", "x86_64")
