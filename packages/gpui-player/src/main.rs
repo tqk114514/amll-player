@@ -11,6 +11,7 @@ mod layout;
 mod lyric_page;
 mod spring;
 mod timeline;
+mod transform;
 mod trace;
 
 use std::path::PathBuf;

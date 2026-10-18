@@ -17,3 +17,7 @@ panic = "abort"
 # 修复 proc-macro-error2 的 E0365 future-incompat(pub use proc_macro 重导出),
 # 上游尚未发布修复版,上游发版后可移除本段与 patches/proc-macro-error2 目录
 proc-macro-error2 = { path = "patches/proc-macro-error2" }
+# 暴露 gpui-pre 的绘制期变换(字形精灵携带矩阵,渲染器原生支持但 facade
+# 未开口子):歌词行缩放动画需要它。变更点见 patches/gpui-pre/PATCH-NOTES.md,
+# 后续可整理成 PR 提交上游;升级 gpui-kit 时需重新套用
+gpui-pre = { path = "patches/gpui-pre" }

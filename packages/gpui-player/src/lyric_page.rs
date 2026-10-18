@@ -21,7 +21,7 @@ use std::time::Instant;
 
 use amll_player_core::{AudioPlayerHandle, AudioThreadEvent, AudioThreadMessage};
 use gpui_kit::{
-    Context, Div, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
+    Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
     Render, SharedString, Size, Styled, FontWeight, Window, div, px, rgba,
 };
 
@@ -29,6 +29,7 @@ use crate::layout::{AlignAnchor, FrameContext, InterludeLayout, LayoutCalculator
 use crate::spring::{pos_y_policy, scale_policy, Spring, SpringParams};
 use crate::timeline::{LyricLine, SeekDetector, Timeline, TimelineDiff};
 use crate::trace::TraceState;
+use crate::transform::ScaledElement;
 
 /// 焦点行顶部对齐位置(react-full 预置 alignPosition=0.25)
 const ALIGN_POSITION: f64 = 0.25;
@@ -420,32 +421,6 @@ impl LyricPage {
     }
 }
 
-/// 单行的静态几何(随字号/窗口推导一次,整帧复用)
-struct LineGeometry {
-    line_box: f64,
-    text_width: f64,
-    pad_y: f64,
-    inset_x: f64,
-}
-
-fn text_layer(text: SharedString, geometry: &LineGeometry, font_size: f64, alpha: f64, weight: f64) -> Div {
-    div()
-        .absolute()
-        .left(px(geometry.inset_x as f32))
-        .top(px(geometry.pad_y as f32))
-        .w(px(geometry.text_width as f32))
-        .text_size(px(font_size as f32))
-        .line_height(px(geometry.line_box as f32))
-        .font_weight(FontWeight::from(600.0))
-        .text_color(Hsla {
-            h: 0.0,
-            s: 0.0,
-            l: 1.0,
-            a: alpha as f32,
-        })
-        .opacity(weight as f32)
-        .child(text)
-}
 
 impl Render for LyricPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -640,12 +615,10 @@ impl Render for LyricPage {
 
         // 7) 渲染可见行(裁剪范围与上游 isInViewport 同式)
         let font = self.font_size;
-        let geometry = LineGeometry {
-            line_box: font * LINE_HEIGHT_EM,
-            text_width: (self.container_width - font * TEXT_INSET_X_EM * 2.0).max(0.0),
-            pad_y: font * WRAPPER_PAD_EM,
-            inset_x: font * TEXT_INSET_X_EM,
-        };
+        let line_box = font * LINE_HEIGHT_EM;
+        let text_width = (self.container_width - font * TEXT_INSET_X_EM * 2.0).max(0.0);
+        let pad_y = font * WRAPPER_PAD_EM;
+        let inset_x = font * TEXT_INSET_X_EM;
         let line_total = font * LINE_TOTAL_EM;
         let motion_buffer = self.container_height * MOTION_BUFFER_RATIO;
         let top_bound = -(OVERSCAN_PX + motion_buffer);
@@ -662,7 +635,7 @@ impl Render for LyricPage {
             if text.trim().is_empty() {
                 continue;
             }
-            let scale = self.scale[index].current_position();
+            let scale = self.scale[index].current_position() / 100.0;
             let line_opacity = if highlighted.contains(&index) {
                 LINE_OPACITY_HIGHLIGHTED
             } else {
@@ -670,44 +643,48 @@ impl Render for LyricPage {
             };
             let text_alpha = self.alpha[index].sample(now);
 
-            // 缩放交叉淡化:t = (scale − 97) / 3
-            let t = ((scale - SCALE_ASPECT) / (100.0 - SCALE_ASPECT)).clamp(0.0, 1.0);
-            let mut wrapper = div()
-                .id(("lyric-line", index))
+            // 上游用 CSS transform: scale() 缩放行元素(transform-origin 为
+            // 行左缘垂直居中,文字排版静态);等价实现:单层静态排版文字 +
+            // 绘制期变换(patches/gpui-pre 暴露的字形精灵矩阵)
+            let text_element = div()
                 .absolute()
-                .left(px(0.0))
-                .top(px(y as f32))
-                .w(px(self.container_width as f32))
-                .h(px(line_total as f32))
-                .opacity(line_opacity as f32)
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener({
-                        let start_ms = line.start_time_ms;
-                        move |this: &mut LyricPage, _event, _window, _cx| {
-                            this.send_seek(start_ms / 1000.0);
-                        }
-                    }),
-                );
-            if t > 0.004 {
-                wrapper = wrapper.child(text_layer(
-                    text.clone(),
-                    &geometry,
-                    font,
-                    text_alpha,
-                    t,
-                ));
-            }
-            if 1.0 - t > 0.004 {
-                wrapper = wrapper.child(text_layer(
-                    text,
-                    &geometry,
-                    font * (SCALE_ASPECT / 100.0),
-                    text_alpha,
-                    1.0 - t,
-                ));
-            }
-            children.push(wrapper);
+                .left(px(inset_x as f32))
+                .top(px(pad_y as f32))
+                .w(px(text_width as f32))
+                .text_size(px(font as f32))
+                .line_height(px(line_box as f32))
+                .font_weight(FontWeight::from(600.0))
+                .text_color(Hsla {
+                    h: 0.0,
+                    s: 0.0,
+                    l: 1.0,
+                    a: text_alpha as f32,
+                })
+                .child(text);
+            children.push(
+                div()
+                    .id(("lyric-line", index))
+                    .absolute()
+                    .left(px(0.0))
+                    .top(px(y as f32))
+                    .w(px(self.container_width as f32))
+                    .h(px(line_total as f32))
+                    .opacity(line_opacity as f32)
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener({
+                            let start_ms = line.start_time_ms;
+                            move |this: &mut LyricPage, _event, _window, _cx| {
+                                this.send_seek(start_ms / 1000.0);
+                            }
+                        }),
+                    )
+                    .child(ScaledElement::new(
+                        text_element,
+                        scale as f32,
+                        gpui::point(px(0.0), px((line_box / 2.0) as f32)),
+                    )),
+            );
         }
 
         div()
