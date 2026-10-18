@@ -25,12 +25,24 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 3 {
+    let paths: Vec<&String> = args
+        .iter()
+        .skip(1)
+        .filter(|arg| !arg.starts_with('-') && std::path::Path::new(arg.as_str()).exists())
+        .collect();
+    if paths.len() < 2 {
         eprintln!("用法: gpui-player <音频文件路径> <TTML 歌词路径>");
+        eprintln!("示例: cargo run -p gpui-player -- \"歌曲.flac\" \"歌词.ttml\"");
+        eprintln!(
+            "收到的参数: {:?}",
+            args.iter().skip(1).collect::<Vec<_>>()
+        );
         std::process::exit(1);
     }
-    let audio_path = args[1].clone();
-    let ttml_content = std::fs::read_to_string(&args[2])?;
+    let audio_path = paths[0].clone();
+    let ttml_bytes = std::fs::read(paths[1])?;
+    // TTML 官方是 UTF-8;对非 UTF-8 的历史文件做有损兜底而非直接崩溃
+    let ttml_content = String::from_utf8_lossy(&ttml_bytes).into_owned();
 
     // TTML → 原型行结构(词粒度,供 M4 逐词渐变)
     let parsed = ttml_processor::parse_ttml(&ttml_content)?;
