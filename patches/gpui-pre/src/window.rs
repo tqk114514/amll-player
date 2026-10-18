@@ -1241,6 +1241,9 @@ pub struct Window {
     pub(crate) element_opacity: f32,
     /// [AMLL patch] 当前元素变换栈(与 element_opacity 同构的绘制期作用域)
     pub(crate) element_transformation: TransformationMatrix,
+    /// [AMLL patch] 稳定字形光栅:固定亚像素相位、sprite 保留分数位置,
+    /// 由 GPU 双线性采样放置——与 WebView 位图层移动等价
+    pub(crate) stable_glyph_raster: bool,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
     /// The [`TextInputConfiguration`] most recently forwarded to the platform
@@ -2147,6 +2150,7 @@ impl Window {
             content_mask_stack: Vec::new(),
             element_opacity: 1.0,
             element_transformation: TransformationMatrix::unit(),
+            stable_glyph_raster: false,
             requested_autoscroll: None,
             last_text_input_configuration: None,
             focused_text_input_active: false,
@@ -4252,6 +4256,14 @@ impl Window {
         self.element_transformation
     }
 
+    /// [AMLL patch] 开启后,paint_glyph 使用固定亚像素相位(0,0)的光栅,
+    /// 并保留字形原点的分数像素位置交给 GPU 双线性采样。
+    /// 逐位置重光栅会让字形 AA 随亚像素相位逐帧变化,动画尾部表现为
+    /// 肉眼可见的微动;稳定光栅与 WebView 的位图层移动机制一致。
+    pub fn set_stable_glyph_raster(&mut self, enabled: bool) {
+        self.stable_glyph_raster = enabled;
+    }
+
     /// Perform prepaint on child elements in a "retryable" manner, so that any side effects
     /// of prepaints can be discarded before prepainting again. This is used to support autoscroll
     /// where we need to prepaint children to detect the autoscroll bounds, then adjust the
@@ -4857,18 +4869,27 @@ impl Window {
         let scale_factor = self.scale_factor();
         let glyph_origin = origin.scale(scale_factor);
 
-        let quantized_origin = Point::new(
-            round_half_toward_zero(glyph_origin.x.0 * SUBPIXEL_VARIANTS_X as f32)
-                / SUBPIXEL_VARIANTS_X as f32,
-            round_half_toward_zero(glyph_origin.y.0 * SUBPIXEL_VARIANTS_Y as f32)
-                / SUBPIXEL_VARIANTS_Y as f32,
-        );
-        let subpixel_variant = Point::new(
-            (quantized_origin.x.fract() * SUBPIXEL_VARIANTS_X as f32) as u8,
-            (quantized_origin.y.fract() * SUBPIXEL_VARIANTS_Y as f32) as u8,
-        );
-        let integer_origin = quantized_origin.map(|c| ScaledPixels(c.trunc()));
-        let subpixel_rendering = self.should_use_subpixel_rendering(font_id, font_size);
+        // [AMLL patch] 稳定光栅模式:固定亚像素相位并保留分数原点,
+        // 光栅不随位置重建,GPU 采样负责亚像素放置(WebView 等价机制)
+        let (subpixel_variant, raster_origin, subpixel_rendering) = if self.stable_glyph_raster {
+            (Point::new(0u8, 0u8), glyph_origin, false)
+        } else {
+            let quantized_origin = Point::new(
+                round_half_toward_zero(glyph_origin.x.0 * SUBPIXEL_VARIANTS_X as f32)
+                    / SUBPIXEL_VARIANTS_X as f32,
+                round_half_toward_zero(glyph_origin.y.0 * SUBPIXEL_VARIANTS_Y as f32)
+                    / SUBPIXEL_VARIANTS_Y as f32,
+            );
+            let subpixel_variant = Point::new(
+                (quantized_origin.x.fract() * SUBPIXEL_VARIANTS_X as f32) as u8,
+                (quantized_origin.y.fract() * SUBPIXEL_VARIANTS_Y as f32) as u8,
+            );
+            (
+                subpixel_variant,
+                quantized_origin.map(|c| ScaledPixels(c.trunc())),
+                self.should_use_subpixel_rendering(font_id, font_size),
+            )
+        };
         let dilation = self.text_system().glyph_dilation_for_color(color);
         let params = RenderGlyphParams {
             font_id,
@@ -4891,7 +4912,7 @@ impl Window {
                 })?
                 .expect("Callback above only errors or returns Some");
             let bounds = Bounds {
-                origin: integer_origin + raster_bounds.origin.map(Into::into),
+                origin: raster_origin + raster_bounds.origin.map(Into::into),
                 size: tile.bounds.size.map(Into::into),
             };
             let content_mask = self.snapped_content_mask();

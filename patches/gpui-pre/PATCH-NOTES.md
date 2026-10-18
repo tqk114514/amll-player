@@ -26,6 +26,14 @@ vendored 自 crates.io 的 `gpui-pre@0.3.9`(gpui-kit 0.7.3 锁定的快照),
 3. `paint_glyph` 的 `SubpixelSprite`/`MonochromeSprite` 插入处,
    `transformation: TransformationMatrix::unit()` 改为
    `transformation: self.element_transformation()`。
+4. `Window` 新增字段 `stable_glyph_raster: bool` 与
+   `pub fn set_stable_glyph_raster(&mut self, enabled: bool)`。
+5. `paint_glyph` 光栅化分支:开启稳定模式时固定亚像素相位为 (0,0)
+   并保留字形原点的分数像素位置(sprite bounds 不截断),由 GPU
+   双线性采样负责亚像素放置——与 WebView 位图层移动等价。
+   动机:逐位置重光栅会让字形 AA 随亚像素相位逐帧变化,弹簧动画
+   尾部速度低、位移小于相位桶宽度,AA 逐帧跳变表现为肉眼可见的微动。
+   关闭时行为与上游一致(paint_emoji 的全彩路径不受影响)。
 
 ## 已知边界
 

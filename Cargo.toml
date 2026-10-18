@@ -21,3 +21,6 @@ proc-macro-error2 = { path = "patches/proc-macro-error2" }
 # 未开口子):歌词行缩放动画需要它。变更点见 patches/gpui-pre/PATCH-NOTES.md,
 # 后续可整理成 PR 提交上游;升级 gpui-kit 时需重新套用
 gpui-pre = { path = "patches/gpui-pre" }
+# 同上:Windows 呈现层锁垂直同步(SyncInterval=1),消除无节流渲染的
+# 翻转队列过载与动画尾部帧距抖动;见 patches/gpui-pre-windows/PATCH-NOTES.md
+gpui-pre-windows = { path = "patches/gpui-pre-windows" }

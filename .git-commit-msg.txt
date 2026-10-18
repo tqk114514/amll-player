@@ -1,0 +1,33 @@
+fix(gpui): 根治动画尾部微动——稳定字形光栅 + 呈现锁垂直同步
+
+用户反馈:每个动画临近结束时元素有轻微微动,不如 WebView 渲染丝滑。
+逐帧数据定位到两个来源,分别修复:
+
+一、字形逐帧重光栅(主因):
+paint_glyph 按字形原点的亚像素相位桶(1/4px)选择光栅,位置每跨过
+一个相位桶就重新光栅化——AA 随相位逐帧变化。动画尾部速度低、单帧
+位移小于相位桶宽度,AA 的逐帧跳变不再被运动本身掩盖,表现为微动;
+WebView 是纹理平移、AA 恒定,故丝滑。
+修复(patches/gpui-pre 第三处补丁):Window 增加 set_stable_glyph_raster,
+开启后固定亚像素相位为 (0,0)、sprite bounds 保留分数像素位置,
+由 GPU 双线性采样负责亚像素放置——与 WebView 的位图层移动等价。
+静止位是整像素(0.25H、2em 行高等推导),文字静止时依旧锐利;
+运动中略微过滤,与 web 一致。歌词页全窗口开启。
+(膨胀度经查恒 0,alpha 补间不会扰动光栅缓存键)
+
+二、呈现无垂直同步:
+DirectXRenderer::Present(0) 不等待合成节拍,动画循环实测以 ~200fps
+过载 FLIP_SEQUENTIAL 3 缓冲翻转队列,DWM 采样相位漂移导致显示帧距
+不均。vendor gpui-pre-windows 并将 Present 改为 SyncInterval=1
+(patches/gpui-pre-windows/PATCH-NOTES.md)。DirectComposition 路径下
+该参数被系统忽略(实测仍 200fps,由 DWM 均匀采样兜底),但在非
+DCOMP 回退路径上是正确的节流,予以保留。
+
+其他:
+- .gitattributes:patches/** 标记 linguist-vendored,vendored 补丁
+  crate 不再计入仓库语言统计
+- compare-traces.mjs:剧本回跳 seek 使同一 media 区间被两遍播放各
+  记录一次,按 media 去重取墙钟较晚者,消除重采样的混叠噪声
+
+回归:23 测试全绿、clippy 0 警告、--trace 69s 全程跑通,
+与上游对比指标不变(scrollTo 0.07%、稳态 0.00px、缩放 ≤0.14%)。

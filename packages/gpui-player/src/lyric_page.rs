@@ -424,6 +424,11 @@ impl LyricPage {
 
 impl Render for LyricPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // 全窗口开启稳定字形光栅(patches/gpui-pre):光栅不随亚像素相位
+        // 重建,由 GPU 双线性采样负责亚像素放置——与 WebView 的位图层
+        // 移动一致,消除动画尾部的 AA 抖动
+        window.set_stable_glyph_raster(true);
+
         let now = Instant::now();
         let had_last_frame = self.last_frame.is_some();
         let delta = self

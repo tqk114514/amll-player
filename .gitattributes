@@ -2,3 +2,5 @@
 /.yarn/releases/*    binary
 /.yarn/plugins/**/*  binary
 /.pnp.*              binary linguist-generated
+# vendored 的本地补丁 crate 不计入语言统计(git 仓库仍完整保留源码)
+patches/** linguist-vendored=true

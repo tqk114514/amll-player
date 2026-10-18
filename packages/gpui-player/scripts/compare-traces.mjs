@@ -37,7 +37,15 @@ function parse(path) {
 		else frames.push(value);
 	}
 	frames.sort((a, b) => a.media - b.media);
-	return { frames, events };
+	// 剧本含回跳 seek 时同一 media 区间会被两遍播放各记录一次:
+	// 按 media 去重,保留墙钟较晚的记录(该遍的最终状态)
+	const deduped = [];
+	for (const frame of frames) {
+		if (deduped.length > 0 && deduped.at(-1).media === frame.media) {
+			if (frame.wall >= deduped.at(-1).wall) deduped[deduped.length - 1] = frame;
+		} else deduped.push(frame);
+	}
+	return { frames: deduped, events };
 }
 
 const gpui = parse(files[0]);
