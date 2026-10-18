@@ -23,3 +23,8 @@ target/
 .opencode
 AGENTS.md
 !src-tauri/gen/apple/
+
+# GPUI 数值对比 harness 的构建与采集产物(脚本与报告入库,原始数据不入库)
+packages/gpui-player/scripts/trace-harness/harness-core.mjs
+packages/gpui-player/scripts/trace-harness/captures/*.jsonl
+.zcode/

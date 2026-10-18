@@ -1,0 +1,177 @@
+[
+	{
+		"words": [
+			{
+				"word": "前奏圆点会在这九秒里呼吸",
+				"startTime": 9000,
+				"endTime": 12780
+			}
+		],
+		"startTime": 9000,
+		"endTime": 13200,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "第二行紧跟着唱起来",
+				"startTime": 14200,
+				"endTime": 17260
+			}
+		],
+		"startTime": 14200,
+		"endTime": 17600,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "间隔短一点 ",
+				"startTime": 18000,
+				"endTime": 19350
+			},
+			{
+				"word": "刚度会更高",
+				"startTime": 19350,
+				"endTime": 20700
+			}
+		],
+		"startTime": 18000,
+		"endTime": 21000,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "这一句稍微长一些,词也多一些",
+				"startTime": 21800,
+				"endTime": 23960
+			}
+		],
+		"startTime": 21800,
+		"endTime": 24200,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "短句",
+				"startTime": 24400,
+				"endTime": 26920
+			}
+		],
+		"startTime": 24400,
+		"endTime": 27200,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "急促的一行",
+				"startTime": 27500,
+				"endTime": 27660
+			}
+		],
+		"startTime": 27500,
+		"endTime": 27700,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "倒数节奏开始密集",
+				"startTime": 27800,
+				"endTime": 31040
+			}
+		],
+		"startTime": 27800,
+		"endTime": 31400,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "间奏前的最后一行 ",
+				"startTime": 32800,
+				"endTime": 36295
+			},
+			{
+				"word": "唱完就休息",
+				"startTime": 36295,
+				"endTime": 38480
+			}
+		],
+		"startTime": 32800,
+		"endTime": 39000,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "间奏之后归来",
+				"startTime": 51000,
+				"endTime": 55140
+			}
+		],
+		"startTime": 51000,
+		"endTime": 55600,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "倒数第二行",
+				"startTime": 55900,
+				"endTime": 59680
+			}
+		],
+		"startTime": 55900,
+		"endTime": 60100,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	},
+	{
+		"words": [
+			{
+				"word": "最后一行唱完就结束了",
+				"startTime": 60400,
+				"endTime": 64900
+			}
+		],
+		"startTime": 60400,
+		"endTime": 65400,
+		"translatedLyric": "",
+		"romanLyric": "",
+		"isBG": false,
+		"isDuet": false
+	}
+]

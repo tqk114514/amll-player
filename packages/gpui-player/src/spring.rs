@@ -164,16 +164,16 @@ impl Spring {
 
     fn current_velocity(&self) -> f64 {
         let solver = &self.solver;
-        let v = derivative(move |t| solver(t));
+        let v = derivative(solver);
         v(self.current_time)
     }
 
     fn current_acceleration(&self) -> f64 {
         let v = {
             let solver = &self.solver;
-            derivative(move |t| solver(t))
+            derivative(solver)
         };
-        let v2 = derivative(move |t| v(t));
+        let v2 = derivative(v);
         v2(self.current_time)
     }
 
@@ -353,6 +353,30 @@ pub mod pos_y_policy {
             stiffness: Some(params.stiffness),
             damping: Some(params.damping),
             mass: None,
+            soft: None,
+        }
+    }
+}
+
+/// 上游 scaleSpringParams:主歌词行缩放弹簧(mass 2, damping 25, stiffness 100)
+pub mod scale_policy {
+    use super::{SpringParams, SpringParamsPatch};
+
+    pub fn main_line() -> SpringParams {
+        SpringParams {
+            mass: 2.0,
+            stiffness: 100.0,
+            damping: 25.0,
+            soft: false,
+        }
+    }
+
+    /// scale 弹簧构造时需要整体设置(含 mass),与 posY 的增量 patch 不同
+    pub fn full_patch(params: SpringParams) -> SpringParamsPatch {
+        SpringParamsPatch {
+            stiffness: Some(params.stiffness),
+            damping: Some(params.damping),
+            mass: Some(params.mass),
             soft: None,
         }
     }

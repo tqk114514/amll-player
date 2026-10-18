@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>AMLL 上游采集 harness</title>
+<style>
+	/* 视口需要 1024×700(headless 启动参数控制);样式复刻 App 内实配:
+	   字体栈(styles.css --amll-font-family)、字重 600(lyricFontWeightAtom 默认)、
+	   字号 medium 预置(react-full getLyricFontSizeFromPreset) */
+	html,
+	body {
+		margin: 0;
+		width: 1024px;
+		height: 700px;
+		overflow: hidden;
+		background: #06060a;
+		font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC",
+			system-ui, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans",
+			"Helvetica Neue", sans-serif;
+		font-weight: 600;
+	}
+	/* 确定性环境:GPUI 窗口固定 1024×700,页面不依赖真实视口尺寸。
+	   字号 = max(5vh, 2.5vw, 14px) 在 1024×700 下的值 = 35px,固定之;
+	   innerWidth/innerHeight 在下方脚本里重定义为 1024/700
+	   (上游 group 构造用 window.innerHeight*2 做入场起点,窄视口判定用 innerWidth) */
+	#stage {
+		width: 1024px;
+		height: 700px;
+		overflow: hidden;
+		--amll-lp-font-size: 35px;
+	}
+	#done {
+		position: fixed;
+		inset: auto 0 0 0;
+		height: 28px;
+		font: 14px system-ui;
+		color: #9be29b;
+		background: #111;
+	}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="done" hidden></div>
+<link rel="stylesheet" href="/packages/player/node_modules/@applemusic-like-lyrics/core/dist/style.css" />
+<script>
+	// 确定性:把上游读取的窗口尺寸钉在 GPUI 窗口的 1024×700
+	Object.defineProperty(Window.prototype, "innerWidth", { get: () => 1024, configurable: true });
+	Object.defineProperty(Window.prototype, "innerHeight", { get: () => 700, configurable: true });
+	// 页面错误可见化:任何未捕获异常都会显示在底部状态条
+	window.addEventListener("error", (event) => {
+		const bar = document.querySelector("#done");
+		bar.hidden = false;
+		bar.style.color = "#ff8a8a";
+		bar.textContent = `页面错误: ${event.message} @${event.filename}:${event.lineno}`;
+	});
+	window.addEventListener("unhandledrejection", (event) => {
+		const bar = document.querySelector("#done");
+		bar.hidden = false;
+		bar.style.color = "#ff8a8a";
+		bar.textContent = `未处理的 Promise 拒绝: ${event.reason}`;
+	});
+</script>
+<script type="module">
+import { DomLyricPlayer, Duration, MediaTime } from "/packages/gpui-player/scripts/trace-harness/harness-core.mjs";
+
+const base = "/packages/gpui-player/testdata";
+const [lines, score] = await Promise.all([
+	(await fetch(`${base}/demo-lines.json`)).json(),
+	(await fetch(`${base}/demo-score.json`)).json(),
+]);
+
+const stage = document.querySelector("#stage");
+const player = new DomLyricPlayer();
+stage.appendChild(player.getElement());
+
+// App 实配(react-full PrebuiltLyricPlayer 经 setter 打入 core 的参数)
+player.setAlignPosition(0.25);
+player.setAlignAnchor("top");
+player.setEnableBlur(true);
+player.setEnableScale(true);
+player.setEnableSpring(true);
+player.setWordFadeWidth(0.5);
+
+player.setLyricLines(lines, 0);
+player.update();
+player.resume();
+
+// 排版事件:patch LyricPlayerBase.prototype.calcLayout,记录 reason/参数/延迟
+const baseProto = Object.getPrototypeOf(Object.getPrototypeOf(player));
+const originalCalcLayout = baseProto.calcLayout;
+const retargetEvents = [];
+let frameMedia = 0;
+baseProto.calcLayout = function patchedCalcLayout(reason) {
+	const result = originalCalcLayout.call(this, reason);
+	const snapshot = this.timelineController.getSnapshot();
+	retargetEvents.push({
+		ev: "retarget",
+		reason,
+		media: frameMedia,
+		k: this.posYSpringParams?.stiffness ?? null,
+		d: this.posYSpringParams?.damping ?? null,
+		scrollTo: snapshot.scrollToIndex,
+		interlude: snapshot.activeInterlude
+			? {
+					start: MediaTime.asMillis(snapshot.activeInterlude.startTime),
+					end: MediaTime.asMillis(snapshot.activeInterlude.endTime),
+					anchor: snapshot.activeInterlude.anchorLineIndex,
+				}
+			: null,
+		delays: this.currentLyricGroups.map((group) => Duration.asMillis(group.delay)),
+	});
+	return result;
+};
+
+const pendingSeeks = [...score.seeks].sort((a, b) => a.at_ms - b.at_ms);
+const FRAME_MS = 1000 / 60;
+// 确定性固定步进:与 GPUI 的 trace 模式逐帧同构(媒体时钟/弹簧步长
+// 都不依赖真实帧率;rAF 冻结只暂停推进,不产生数据空洞)
+let mediaMs = 0;
+let stepped = false;
+let lastMedia = null;
+const frames = [];
+
+function nextMedia() {
+	if (stepped) mediaMs += FRAME_MS;
+	stepped = true;
+	while (pendingSeeks.length > 0 && mediaMs >= pendingSeeks[0].at_ms) {
+		const seek = pendingSeeks.shift();
+		mediaMs = seek.to_ms;
+	}
+	return mediaMs;
+}
+
+function sample(wall, media) {
+	const groups = player.currentLyricGroups;
+	const snapshot = player.timelineController.getSnapshot();
+	const latest = snapshot.latestHighlightedIndex ?? snapshot.scrollToIndex;
+	const params = player.posYSpringParams ?? {};
+	const dotsEl = player.interludeDots?.getElement?.();
+	const dotsRect = dotsEl ? dotsEl.getBoundingClientRect() : null;
+	const jump = lastMedia !== null && Math.abs(media - lastMedia) > 250;
+	lastMedia = media;
+	frames.push({
+		wall,
+		media,
+		playing: true,
+		seek: jump,
+		scrollTo: snapshot.scrollToIndex,
+		latest,
+		hl: [...snapshot.highlightedGroups],
+		k: params.stiffness ?? null,
+		d: params.damping ?? null,
+		interludeY: dotsRect ? dotsRect.top : null,
+		y: groups.map((group) => group.posY.getCurrentPosition()),
+		s: groups.map((group) => group.mainLine.lineTransforms.scale.getCurrentPosition()),
+		op: groups.map((group) => group.opacity),
+		// renderStyles 的 min(5, blur);窄视口 ×0.8 已含在 resolveBlurLevel 里
+		blur: groups.map((group) => Math.min(5, group.blur)),
+		maskBright: groups.map((group) => {
+			const style = getComputedStyle(group.mainLine.element);
+			return Number.parseFloat(style.getPropertyValue("--bright-mask-alpha")) || 0;
+		}),
+		maskCls: groups.map((group) =>
+			group.mainLine.element.classList.contains("FmKaba_gradientMask"),
+		),
+		isActive: groups.map((_group, index) => {
+			const highlighted = snapshot.highlightedGroups.has(index);
+			return highlighted || (index >= snapshot.scrollToIndex && index < latest);
+		}),
+		delays: groups.map((group) => Duration.asMillis(group.delay)),
+	});
+}
+
+let lastTickAt = performance.now();
+function frame(time) {
+	lastTickAt = performance.now();
+	const first = !stepped;
+	const media = nextMedia();
+	frameMedia = media;
+	window.__traceDebug = { frames: frames.length, media, stepped };
+	const dt = first ? 0 : FRAME_MS;
+	// 与 react 包装层同构:先喂时间,再 update(dt) 推进弹簧并写样式
+	player.setCurrentTime(media);
+	player.update(dt);
+	sample(time, media);
+	if (frames.length % 300 === 0) savePartial();
+	if (media >= score.duration_ms) return finish();
+	requestAnimationFrame(frame);
+}
+
+// 增量落盘:页面中途被关掉也不丢已采集数据(服务器整文件覆盖写)
+function savePartial() {
+	const records = [
+		...retargetEvents.map((event) => JSON.stringify(event)),
+		...frames.map((frameRecord) => JSON.stringify(frameRecord)),
+	];
+	fetch("/save/capture-web.jsonl", { method: "POST", body: records.join("\n") }).catch(() => {});
+}
+
+async function finish() {
+	savePartial();
+	const done = document.querySelector("#done");
+	done.hidden = false;
+	done.textContent = `采集完成: ${frames.length} 帧 + ${retargetEvents.length} 事件,已 POST 到服务器`;
+}
+
+requestAnimationFrame(frame);
+
+// 兜底:IAB 面板被遮挡时 rAF 会完全挂起,此时用低频定时器成批推进
+// (CSS 过渡类字段会与虚拟时间轻微失真,但主链路弹簧数据完全确定性)
+setInterval(() => {
+	if (performance.now() - lastTickAt > 500) {
+		for (let i = 0; i < 60; i++) {
+			if (frameMedia >= score.duration_ms) break;
+			frame(performance.now());
+		}
+	}
+}, 250);
+</script>
+</body>
+</html>
