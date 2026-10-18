@@ -1,8 +1,10 @@
-//! M1 工具链冒烟:GPUI 窗口 + 真实音频播放接线。
+//! GPUI 歌词页原型(第一阶段 M3)。
 //!
-//! 用法: gpui-player <音频文件路径>
-//! 验证:Windows D3D11 工具链、CJK 文本渲染、player-core 播放链路、事件桥。
+//! 用法: gpui-player <音频文件路径> <TTML 歌词路径>
+//! 音频经 player-core 播放,TTML 经 ttml_processor 解析,
+//! 歌词以 AMLL 手感(弹簧滚动 + stagger + 行缩放)渲染。
 
+mod lyric_page;
 mod spring;
 mod timeline;
 
@@ -12,77 +14,10 @@ use amll_player_core::{
     AudioPlayer, AudioPlayerConfig, AudioPlayerHandle, AudioThreadEvent, AudioThreadEventMessage,
     AudioThreadMessage, NowPlayingOptions, SongData,
 };
-use gpui_kit::{
-    div, open_window, point, rgba, size, AppContext, Bounds, Context, IntoElement, ParentElement,
-    Render, Styled, TitlebarOptions, Window, WindowOptions, WindowBounds, px,
-};
-use gpui_kit::component::button::{Button, ButtonVariants};
+use gpui_kit::{point, px, size, AppContext, Bounds, TitlebarOptions, WindowOptions, WindowBounds};
 
-struct PlayerView {
-    handle: AudioPlayerHandle,
-    title: String,
-    position: f64,
-    playing: bool,
-    volume: f64,
-}
-
-impl PlayerView {
-    fn format_position(&self) -> String {
-        let total = self.position.max(0.0) as u64;
-        format!("{:02}:{:02}", total / 60, total % 60)
-    }
-
-    fn send_message(&self, cx: &mut Context<Self>, msg: AudioThreadMessage) {
-        let handle = self.handle.clone();
-        cx.spawn(async move |_, _| {
-            if let Err(e) = handle.send_anonymous(msg).await {
-                tracing::warn!("发送播放控制消息失败: {e:?}");
-            }
-        })
-        .detach();
-    }
-}
-
-impl Render for PlayerView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .bg(rgba(0x14141aff))
-            .child(
-                div()
-                    .text_size(px(22.0))
-                    .text_color(rgba(0xffffffff))
-                    .child(format!("♪ {}", self.title)),
-            )
-            .child(
-                div()
-                    .text_size(px(14.0))
-                    .text_color(rgba(0xa0a0a8ff))
-                    .child(format!(
-                        "{} / {}",
-                        self.format_position(),
-                        if self.playing { "播放中" } else { "已暂停" }
-                    )),
-            )
-            .child(
-                div().flex().gap_2().child(
-                    Button::new("play-pause")
-                        .primary()
-                        .label(if self.playing { "暂停" } else { "播放" })
-                        .on_click(cx.listener(
-                            |this: &mut PlayerView, _event, _window, cx| {
-                                this.send_message(cx, AudioThreadMessage::ResumeOrPauseAudio);
-                            },
-                        )),
-                ),
-            )
-    }
-}
+use crate::lyric_page::LyricPage;
+use crate::timeline::{LyricLine, LyricWord};
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -90,19 +25,55 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        eprintln!("用法: gpui-player <音频文件路径>");
+    if args.len() < 3 {
+        eprintln!("用法: gpui-player <音频文件路径> <TTML 歌词路径>");
         std::process::exit(1);
     }
     let audio_path = args[1].clone();
-    let title = std::path::Path::new(&audio_path)
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "未知曲目".into());
+    let ttml_content = std::fs::read_to_string(&args[2])?;
 
-    let (evt_tx, mut evt_rx) = tokio::sync::mpsc::unbounded_channel::<
-        AudioThreadEventMessage<AudioThreadEvent>,
-    >();
+    // TTML → 原型行结构(词粒度,供 M4 逐词渐变)
+    let parsed = ttml_processor::parse_ttml(&ttml_content)?;
+    let lines: Vec<LyricLine> = parsed
+        .lines
+        .iter()
+        .map(|line| LyricLine {
+            start_time_ms: line.start_time as f64,
+            end_time_ms: line.end_time as f64,
+            words: line
+                .words
+                .as_ref()
+                .map(|words| {
+                    words
+                        .iter()
+                        .map(|word| LyricWord {
+                            start_time_ms: word.start_time as f64,
+                            end_time_ms: word.end_time as f64,
+                            text: format!(
+                                "{}{}",
+                                word.text,
+                                if word.ends_with_space.unwrap_or(false) {
+                                    " "
+                                } else {
+                                    ""
+                                }
+                            ),
+                        })
+                        .collect()
+                })
+                .unwrap_or_else(|| {
+                    vec![LyricWord {
+                        start_time_ms: line.start_time as f64,
+                        end_time_ms: line.end_time as f64,
+                        text: line.text.clone(),
+                    }]
+                }),
+        })
+        .collect();
+    tracing::info!("解析 TTML: {} 行", lines.len());
+
+    let (evt_tx, mut evt_rx) =
+        tokio::sync::mpsc::unbounded_channel::<AudioThreadEventMessage<AudioThreadEvent>>();
     let (handle_tx, handle_rx) = mpsc::channel::<AudioPlayerHandle>();
 
     // 音频线程:独立线程 + current-thread 运行时,与 src-tauri 的接线一致
@@ -135,7 +106,7 @@ fn main() -> anyhow::Result<()> {
         .recv()
         .map_err(|_| anyhow::anyhow!("音频线程初始化失败"))?;
 
-    // 发起播放:send_anonymous 是 async,借一个一次性小运行时执行
+    // 发起播放
     {
         let handle = handle.clone();
         std::thread::spawn(move || {
@@ -162,15 +133,9 @@ fn main() -> anyhow::Result<()> {
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
 
-        let view = cx.new(|_| PlayerView {
-            handle,
-            title,
-            position: 0.0,
-            playing: false,
-            volume: 1.0,
-        });
+        let view = cx.new(|_| LyricPage::new(handle, lines));
 
-        open_window(
+        gpui_kit::open_window(
             WindowOptions {
                 titlebar: Some(TitlebarOptions {
                     title: Some("AMLL GPUI 原型".into()),
@@ -187,35 +152,12 @@ fn main() -> anyhow::Result<()> {
         )
         .expect("打开窗口失败");
 
-        // 事件桥:tokio unbounded 的 recv 可在任意执行器上 await,
-        // 把音频线程事件转发进 GPUI 的视图实体
+        // 事件桥:tokio unbounded 的 recv 可在任意执行器上 await
         cx.spawn(async move |cx| {
             while let Some(evt) = evt_rx.recv().await {
-                let data = evt.data;
-                let Some(event) = data else { continue };
-                let _ = view.update(cx, |this: &mut PlayerView, cx| match event {
-                    AudioThreadEvent::PlayPosition { position } => {
-                        this.position = position;
-                        cx.notify();
-                    }
-                    AudioThreadEvent::PlayStatus { is_playing } => {
-                        this.playing = is_playing;
-                        cx.notify();
-                    }
-                    AudioThreadEvent::VolumeChanged { volume } => {
-                        this.volume = volume;
-                        cx.notify();
-                    }
-                    AudioThreadEvent::AudioPlayFinished { .. }
-                    | AudioThreadEvent::TrackEnded => {
-                        this.playing = false;
-                        cx.notify();
-                    }
-                    AudioThreadEvent::LoadError { error }
-                    | AudioThreadEvent::PlayError { error } => {
-                        tracing::error!("音频错误: {error}");
-                    }
-                    _ => {}
+                let Some(event) = evt.data else { continue };
+                let _ = view.update(cx, |page: &mut LyricPage, cx| {
+                    page.on_audio_event(event, cx);
                 });
             }
         })

@@ -22,7 +22,9 @@ pub struct LyricLine {
 
 #[derive(Debug, Clone)]
 pub struct LyricWord {
+    #[allow(dead_code)] // M4 逐词渐变揭示将消费
     pub start_time_ms: f64,
+    #[allow(dead_code)] // M4 逐词渐变揭示将消费
     pub end_time_ms: f64,
     pub text: String,
 }
@@ -117,7 +119,8 @@ impl Timeline {
         self.highlighted.first().copied()
     }
 
-    /// 间奏锚点行(焦点解析用);无间奏时为 None
+    /// 间奏锚点行(焦点解析用);无间奏时为 None(M3 滚动暂未消费)
+    #[allow(dead_code)]
     pub fn interlude_anchor(&self) -> Option<usize> {
         self.interlude_anchor
     }

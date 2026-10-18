@@ -7,6 +7,7 @@ description = "AMLL Player 的 GPUI 前端原型(第一阶段:歌词页手感验
 [dependencies]
 gpui-kit = "0.7.3"
 amll-player-core = { path = "../player-core" }
+ttml_processor = "0.3"
 tokio = { version = "^1", features = ["rt", "sync", "time", "macros"] }
 anyhow = "^1.0"
 tracing = "0.1"

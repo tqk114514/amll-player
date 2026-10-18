@@ -31,7 +31,8 @@ impl Default for SpringParams {
 }
 
 impl SpringParams {
-    /// 转为"全字段都提供"的增量补丁
+    /// 转为"全字段都提供"的增量补丁(M4 逐词动画将消费)
+    #[allow(dead_code)]
     pub fn patch(self) -> SpringParamsPatch {
         SpringParamsPatch {
             stiffness: Some(self.stiffness),
@@ -156,6 +157,7 @@ impl Spring {
         self.current_position
     }
 
+    #[allow(dead_code)] // M4 拖动滚动将消费
     pub fn target_position(&self) -> f64 {
         self.target_position
     }
@@ -297,7 +299,9 @@ pub mod pos_y_policy {
 
     const SLOW_STIFFNESS: f64 = 90.0;
     const SLOW_DAMPING: f64 = 15.0;
+    #[allow(dead_code)] // M4 接入
     const MEDIUM_STIFFNESS: f64 = 140.0;
+    #[allow(dead_code)] // M4 接入
     const MEDIUM_DAMPING: f64 = 22.0;
     const MIN_INTERVAL: f64 = 100.0;
     const MAX_INTERVAL: f64 = 800.0;
@@ -317,7 +321,8 @@ pub mod pos_y_policy {
         }
     }
 
-    /// 歌曲播完时的一次性滚动
+    /// 歌曲播完时的一次性滚动(M4 接入)
+    #[allow(dead_code)]
     pub fn medium() -> SpringParams {
         SpringParams {
             mass: MASS,
