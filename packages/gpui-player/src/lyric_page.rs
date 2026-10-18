@@ -58,6 +58,8 @@ pub struct LyricPage {
     scale: Vec<Spring>,
     last_scroll_to: Option<usize>,
     layout_initialized: bool,
+    first_layout: bool,
+    wall_origin: Instant,
 
     last_frame: Option<Instant>,
 }
@@ -81,6 +83,8 @@ impl LyricPage {
             scale: (0..count).map(|_| Spring::new(100.0)).collect(),
             last_scroll_to: None,
             layout_initialized: false,
+            first_layout: true,
+            wall_origin: Instant::now(),
             last_frame: None,
         }
     }
@@ -179,11 +183,10 @@ impl LyricPage {
 
     /// 焦点行(scrollToIndex)变化或 seek 时重定全部滚动弹簧目标。
     /// 刚度按行间隔动态计算(上游 getPosYSpringPolicy),stagger 波浪
-    /// 从焦点行向两侧扩散。
+    /// 从焦点行向两侧扩散。间奏/前奏期锚定在第一行(上游 interlude 语义)。
     fn retarget_springs(&mut self, is_seek: bool) {
-        let Some(scroll_to) = self.timeline.scroll_to_index() else {
-            return;
-        };
+        // 间奏/前奏无焦点时锚定第一行,避免初始所有行堆叠在 y=0
+        let scroll_to = self.timeline.scroll_to_index().unwrap_or(0);
         let changed = self.last_scroll_to != Some(scroll_to);
         if !changed && !is_seek && self.layout_initialized {
             return;
@@ -237,7 +240,13 @@ impl LyricPage {
             } else {
                 0.0
             };
-            self.pos_y[index].set_target_position(viewport_start + line_tops[index], delay);
+            let target_y = viewport_start + line_tops[index];
+            if self.first_layout {
+                // 首次布局直接钉位,不做从 0 散开的入场动画
+                self.pos_y[index].set_position(target_y);
+            } else {
+                self.pos_y[index].set_target_position(target_y, delay);
+            }
         }
 
         // scale 目标:高亮行 100,其余 97
@@ -247,6 +256,7 @@ impl LyricPage {
             spring.set_target_position(target, 0.0);
         }
         self.layout_initialized = true;
+        self.first_layout = false;
     }
 
     fn animating(&self) -> bool {
@@ -281,9 +291,9 @@ impl Render for LyricPage {
             self.position_ms = self.event_position_ms;
         }
 
-        let is_seek = self
-            .detector
-            .detect(self.position_ms, now.elapsed().as_millis() as f64, self.playing);
+        // 墙钟:取距进程内固定起点的流逝时间(Instant::now().elapsed() 恒为 0,是 bug)
+        let wall_ms = self.wall_origin.elapsed().as_millis() as f64;
+        let is_seek = self.detector.detect(self.position_ms, wall_ms, self.playing);
         self.timeline.sync(self.position_ms, is_seek);
 
         // 布局测量需要 window(text_system);容器尺寸取窗口尺寸(M3 全屏歌词页)
@@ -336,7 +346,11 @@ impl Render for LyricPage {
             let y = *y;
             let line = &self.timeline.lines()[index];
             let scale = self.scale[index].current_position();
-            let effective_font = FONT_SIZE * scale / 100.0;
+            // 字号离散到 100%/97% 两档:连续的分数字号会让文本每帧重新
+            // 排版,宽度持续微变,表现为肉眼可见的"呼吸/微抖";
+            // 上游 DOM 用 transform:scale() 不触发重排版,GPUI 的 div
+            // 没有 transform,故只在弹簧跨越阈值时切档
+            let effective_font = FONT_SIZE * if scale > 98.5 { 1.0 } else { 0.97 };
             let is_highlighted = highlighted.contains(&index);
             let text: String = line.full_line_text();
             if text.trim().is_empty() {
