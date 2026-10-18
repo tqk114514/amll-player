@@ -636,6 +636,18 @@ impl PlatformWindow for WindowsWindow {
         self.state.bounds()
     }
 
+    /// [AMLL patch] 读回最近一帧像素(渲染目标在下一帧绘制前仍保留
+    /// 上一帧内容,逐帧调用即得呈现输出的连续记录)
+    fn capture_frame_pixels(&mut self) -> Option<image::RgbaImage> {
+        self.0
+            .state
+            .renderer
+            .try_borrow()
+            .ok()?
+            .capture_last_frame()
+            .log_err()
+    }
+
     fn is_maximized(&self) -> bool {
         self.state.is_maximized()
     }

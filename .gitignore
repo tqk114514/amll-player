@@ -28,3 +28,4 @@ AGENTS.md
 packages/gpui-player/scripts/trace-harness/harness-core.mjs
 packages/gpui-player/scripts/trace-harness/captures/*.jsonl
 .zcode/
+packages/gpui-player/scripts/trace-harness/captures/pixels/

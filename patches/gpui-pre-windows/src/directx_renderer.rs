@@ -486,6 +486,61 @@ impl DirectXRenderer {
             .context("Failed to build RgbaImage from staging readback")
     }
 
+    /// [AMLL patch] 读回渲染目标当前内容(最近一次绘制、尚未被下一帧
+    /// 覆盖的像素),供像素级追踪与验收对比;不重绘、不影响呈现。
+    pub fn capture_last_frame(&self) -> Result<image::RgbaImage> {
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let device = &devices.device;
+        let context = &devices.device_context;
+        let resources = self.resources.as_ref().context("resources missing")?;
+        let render_target = resources
+            .render_target
+            .as_ref()
+            .context("render target missing")?;
+
+        let mut desc = D3D11_TEXTURE2D_DESC::default();
+        unsafe { render_target.GetDesc(&mut desc) };
+        let width = desc.Width;
+        let height = desc.Height;
+        let staging_desc = D3D11_TEXTURE2D_DESC {
+            Usage: D3D11_USAGE_STAGING,
+            BindFlags: 0,
+            CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
+            MiscFlags: 0,
+            MipLevels: 1,
+            ArraySize: 1,
+            SampleDesc: DXGI_SAMPLE_DESC {
+                Count: 1,
+                Quality: 0,
+            },
+            ..desc
+        };
+        let mut staging: Option<ID3D11Texture2D> = None;
+        unsafe { device.CreateTexture2D(&staging_desc, None, Some(&mut staging))? };
+        let staging = staging.context("creating staging texture")?;
+        unsafe { context.CopyResource(&staging, render_target) };
+
+        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
+        unsafe { context.Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))? };
+        let row_bytes = (width as usize) * 4;
+        let mut pixels = vec![0u8; row_bytes * height as usize];
+        unsafe {
+            let src = mapped.pData as *const u8;
+            for row in 0..height as usize {
+                let s = src.add(row * mapped.RowPitch as usize);
+                let d = pixels.as_mut_ptr().add(row * row_bytes);
+                std::ptr::copy_nonoverlapping(s, d, row_bytes);
+            }
+            context.Unmap(&staging, 0);
+        }
+        // 渲染目标为 BGRA;image::RgbaImage 期望 RGBA
+        for px in pixels.chunks_exact_mut(4) {
+            px.swap(0, 2);
+        }
+        image::RgbaImage::from_raw(width, height, pixels)
+            .context("Failed to build RgbaImage from staging readback")
+    }
+
     pub(crate) fn resize(&mut self, new_size: Size<DevicePixels>) -> Result<()> {
         let width = new_size.width.0.max(1) as u32;
         let height = new_size.height.0.max(1) as u32;

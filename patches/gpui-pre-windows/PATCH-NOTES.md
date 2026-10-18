@@ -14,6 +14,14 @@ vendored 自 crates.io 的 `gpui-pre-windows@0.3.9`(Windows D3D11/DirectWrite
 可见的"轻微微动"。锁到刷新率后,渲染/动画/呈现与 WebView 合成器
 的节奏一致(歌词页为 60Hz 内容)。
 
+## 变更点(二):像素读回
+
+`src/directx_renderer.rs` 新增 `pub fn capture_last_frame()`(带
+`[AMLL patch]` 注释):把渲染目标 CopyResource 到 staging 纹理并读回
+为 RGBA,不重绘、不影响呈现;`src/window.rs` 的 `WindowsWindow` 经
+`PlatformWindow::capture_frame_pixels`(gpui-pre 补丁)对外暴露。
+仅诊断用途。
+
 ## 维护
 
 升级 gpui-kit(连带 gpui-pre-windows 版本)时,对照新版

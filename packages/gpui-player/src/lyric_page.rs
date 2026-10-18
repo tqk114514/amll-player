@@ -28,7 +28,7 @@ use gpui_kit::{
 use crate::layout::{AlignAnchor, FrameContext, InterludeLayout, LayoutCalculator, LayoutTarget};
 use crate::spring::{pos_y_policy, scale_policy, Spring, SpringParams};
 use crate::timeline::{LyricLine, SeekDetector, Timeline, TimelineDiff};
-use crate::trace::TraceState;
+use crate::trace::{PixelTrace, TraceState};
 use crate::transform::ScaledElement;
 
 /// 焦点行顶部对齐位置(react-full 预置 alignPosition=0.25)
@@ -146,6 +146,8 @@ pub struct LyricPage {
     pending_events: Vec<serde_json::Value>,
 
     trace: Option<TraceState>,
+    /// 像素级追踪(--trace-pixels):逐帧读回呈现输出并差分
+    pixel_trace: Option<PixelTrace>,
     last_frame: Option<Instant>,
     wall_origin: Instant,
 }
@@ -155,6 +157,7 @@ impl LyricPage {
         handle: Option<AudioPlayerHandle>,
         lines: Vec<LyricLine>,
         trace: Option<TraceState>,
+        pixel_dir: Option<std::path::PathBuf>,
     ) -> Self {
         let count = lines.len();
         let scale_patch = scale_policy::full_patch(scale_policy::main_line());
@@ -188,6 +191,7 @@ impl LyricPage {
             last_interlude_y: None,
             pending_events: Vec::new(),
             trace,
+            pixel_trace: pixel_dir.map(PixelTrace::new),
             last_frame: None,
             wall_origin: Instant::now(),
         }
@@ -424,12 +428,14 @@ impl LyricPage {
 
 impl Render for LyricPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // 全窗口开启稳定字形光栅(patches/gpui-pre):光栅不随亚像素相位
-        // 重建,由 GPU 双线性采样负责亚像素放置——与 WebView 的位图层
-        // 移动一致,消除动画尾部的 AA 抖动
-        window.set_stable_glyph_raster(true);
-
         let now = Instant::now();
+        // 像素级追踪:先读回上一呈现帧(此时渲染目标尚未被本帧覆盖)
+        let prev_media = self.position_ms;
+        let captured_pixels = if self.pixel_trace.is_some() {
+            window.capture_frame_pixels()
+        } else {
+            None
+        };
         let had_last_frame = self.last_frame.is_some();
         let delta = self
             .last_frame
@@ -604,6 +610,9 @@ impl Render for LyricPage {
                 "op": ops,
                 "blur": blurs,
             }));
+            if let (Some(pixel_trace), Some(pixels)) = (&mut self.pixel_trace, captured_pixels) {
+                pixel_trace.record(pixels, prev_media, wall_ms, &mut trace.recorder);
+            }
             if !trace.done && self.position_ms >= trace.duration_ms {
                 trace.done = true;
                 let frames = trace.recorder.frames();
@@ -618,7 +627,10 @@ impl Render for LyricPage {
             }
         }
 
-        // 7) 渲染可见行(裁剪范围与上游 isInViewport 同式)
+        // 7) 渲染可见行:布局完全静态——所有行恒定叠放在布局原点,
+        // 滚动偏移(posY)与缩放都经绘制期矩阵应用(与上游 CSS
+        // transform: translateY + scale 的机制一致)。字形绘制位置
+        // 逐帧不变,光栅天然稳定。
         let font = self.font_size;
         let line_box = font * LINE_HEIGHT_EM;
         let text_width = (self.container_width - font * TEXT_INSET_X_EM * 2.0).max(0.0);
@@ -631,6 +643,8 @@ impl Render for LyricPage {
         let highlighted: &[usize] = self.timeline.highlighted();
 
         let mut children = Vec::new();
+        // 点击映射表:各行的可视纵带与其起始时间(行本体不再承载事件)
+        let mut click_bands: Vec<(f64, f64, f64)> = Vec::new();
         for (index, line) in self.timeline.lines().iter().enumerate() {
             let y = self.pos_y[index].current_position();
             if !(y <= bottom_bound && y + line_total >= top_bound) {
@@ -647,10 +661,9 @@ impl Render for LyricPage {
                 1.0
             };
             let text_alpha = self.alpha[index].sample(now);
+            click_bands.push((y, y + line_total, line.start_time_ms));
 
-            // 上游用 CSS transform: scale() 缩放行元素(transform-origin 为
-            // 行左缘垂直居中,文字排版静态);等价实现:单层静态排版文字 +
-            // 绘制期变换(patches/gpui-pre 暴露的字形精灵矩阵)
+            // 静态文字层:位置恒为 (内缩 1em, 上留白 0.4em)
             let text_element = div()
                 .absolute()
                 .left(px(inset_x as f32))
@@ -671,26 +684,40 @@ impl Render for LyricPage {
                     .id(("lyric-line", index))
                     .absolute()
                     .left(px(0.0))
-                    .top(px(y as f32))
+                    .top(px(0.0))
                     .w(px(self.container_width as f32))
                     .h(px(line_total as f32))
                     .opacity(line_opacity as f32)
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener({
-                            let start_ms = line.start_time_ms;
-                            move |this: &mut LyricPage, _event, _window, _cx| {
-                                this.send_seek(start_ms / 1000.0);
-                            }
-                        }),
-                    )
                     .child(ScaledElement::new(
                         text_element,
                         scale as f32,
+                        gpui::point(px(0.0), px(y as f32)),
                         gpui::point(px(0.0), px((line_box / 2.0) as f32)),
                     )),
             );
         }
+
+        // 全窗口点击映射层:按点击纵坐标命中的可视行发起 seek
+        children.push(
+            div()
+                .id("lyric-click-layer")
+                .absolute()
+                .size_full()
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(
+                        move |this: &mut LyricPage, event: &gpui::MouseDownEvent, _window, _cx| {
+                            let click_y = (event.position.y / px(1.0)) as f64;
+                            for (top, bottom, start_ms) in &click_bands {
+                                if click_y >= *top && click_y < *bottom {
+                                    this.send_seek(start_ms / 1000.0);
+                                    break;
+                                }
+                            }
+                        },
+                    ),
+                ),
+        );
 
         div()
             .id("lyric-page")

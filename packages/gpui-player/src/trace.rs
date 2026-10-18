@@ -149,3 +149,83 @@ impl TraceState {
         })
     }
 }
+
+/// 像素级追踪:逐帧读回呈现输出,记录帧间逐像素差分指标(微动的
+/// 客观度量)与采样 PNG,写入同一份 trace JSONL(`ev: "pixel"`)。
+pub struct PixelTrace {
+    dir: PathBuf,
+    prev: Option<(u32, u32, Vec<u8>)>,
+    frame: usize,
+    saved: usize,
+}
+
+impl PixelTrace {
+    pub fn new(dir: PathBuf) -> Self {
+        if let Some(parent) = dir.parent() && !parent.as_os_str().is_empty() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::create_dir_all(&dir);
+        Self {
+            dir,
+            prev: None,
+            frame: 0,
+            saved: 0,
+        }
+    }
+
+    /// `captured` 是最近呈现的一帧(在下一帧绘制前读回,逐帧调用
+    /// 即得呈现输出的连续记录);与上一帧差分后写指标,
+    /// 有变化的帧按间隔采样存 PNG 供肉眼复核。
+    pub fn record(
+        &mut self,
+        captured: image::RgbaImage,
+        media: f64,
+        wall: f64,
+        recorder: &mut TraceRecorder,
+    ) {
+        let (width, height) = captured.dimensions();
+        let raw = captured.into_raw();
+        if let Some((prev_w, prev_h, prev)) = &self.prev
+            && *prev_w == width
+            && *prev_h == height
+        {
+            let mut diff_sum: u64 = 0;
+            let mut changed: u64 = 0;
+            let mut max_diff: u8 = 0;
+            for (a, b) in prev.as_chunks::<4>().0.iter().zip(raw.as_chunks::<4>().0) {
+                let mut px_diff: u8 = 0;
+                for channel in 0..4 {
+                    px_diff = px_diff.max((a[channel] as i16 - b[channel] as i16).unsigned_abs() as u8);
+                }
+                if px_diff > 4 {
+                    changed += 1;
+                }
+                diff_sum += px_diff as u64;
+                max_diff = max_diff.max(px_diff);
+            }
+            let pixels = width as u64 * height as u64;
+            recorder.write(&serde_json::json!({
+                "ev": "pixel",
+                "media": media,
+                "wall": wall,
+                "frame": self.frame,
+                "meanDiff": diff_sum as f64 / pixels as f64,
+                "changedPx": changed,
+                "maxDiff": max_diff,
+            }));
+            // 采样:有像素变化时每 8 帧存一张(上限 800 张)
+            if changed > 0
+                && self.frame.is_multiple_of(8)
+                && self.saved < 800
+                && let Some(img) = image::RgbaImage::from_raw(width, height, raw.clone())
+            {
+                let path = self.dir.join(format!("f{:05}_m{:.0}.png", self.frame, media));
+                if img.save(&path).is_ok() {
+                    self.saved += 1;
+                }
+            }
+        }
+        self.prev = Some((width, height, raw));
+        self.frame += 1;
+    }
+}

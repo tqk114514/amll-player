@@ -1195,6 +1195,12 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn is_maximized(&self) -> bool;
     fn window_bounds(&self) -> WindowBounds;
     fn content_size(&self) -> Size<Pixels>;
+
+    /// [AMLL patch] 读回最近一次绘制、尚未被下一帧覆盖的像素
+    /// (无平台实现时返回 None)
+    fn capture_frame_pixels(&mut self) -> Option<image::RgbaImage> {
+        None
+    }
     /// Returns the visible viewport in logical pixels relative to the content origin.
     ///
     /// This may be smaller or offset when a keyboard or zoom obscures content;

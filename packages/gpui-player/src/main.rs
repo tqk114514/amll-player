@@ -43,6 +43,7 @@ fn main() -> anyhow::Result<()> {
 
     let args: Vec<String> = std::env::args().collect();
     let mut trace_path: Option<PathBuf> = None;
+    let mut pixel_dir: Option<PathBuf> = None;
     let mut score_path: Option<PathBuf> = None;
     let mut quit_on_done = false;
     let mut paths: Vec<PathBuf> = Vec::new();
@@ -53,6 +54,12 @@ fn main() -> anyhow::Result<()> {
             "--trace" => {
                 index += 1;
                 trace_path = Some(PathBuf::from(
+                    args.get(index).unwrap_or_else(|| usage()),
+                ));
+            }
+            "--trace-pixels" => {
+                index += 1;
+                pixel_dir = Some(PathBuf::from(
                     args.get(index).unwrap_or_else(|| usage()),
                 ));
             }
@@ -211,7 +218,7 @@ fn main() -> anyhow::Result<()> {
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
 
-        let view = cx.new(|_| LyricPage::new(handle, lines, trace_state));
+        let view = cx.new(|_| LyricPage::new(handle, lines, trace_state, pixel_dir));
 
         gpui_kit::open_window(
             WindowOptions {

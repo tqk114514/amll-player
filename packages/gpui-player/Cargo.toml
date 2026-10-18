@@ -13,5 +13,7 @@ ttml_processor = "0.3"
 tokio = { version = "^1", features = ["rt", "sync", "time", "macros"] }
 anyhow = "^1.0"
 serde_json = "^1.0"
+# 像素级追踪的截帧解码(PixelTrace)
+image = "0.25"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

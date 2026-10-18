@@ -1,33 +1,34 @@
-fix(gpui): 根治动画尾部微动——稳定字形光栅 + 呈现锁垂直同步
+fix(gpui): 滚动并入绘制期变换——布局完全静态,新增像素级追踪
 
-用户反馈:每个动画临近结束时元素有轻微微动,不如 WebView 渲染丝滑。
-逐帧数据定位到两个来源,分别修复:
+用户反馈:①稳定光栅方案不正统且出现"字间白色细线还会闪";②动画尾部
+微动依旧;③希望有像素级追踪日志。
 
-一、字形逐帧重光栅(主因):
-paint_glyph 按字形原点的亚像素相位桶(1/4px)选择光栅,位置每跨过
-一个相位桶就重新光栅化——AA 随相位逐帧变化。动画尾部速度低、单帧
-位移小于相位桶宽度,AA 的逐帧跳变不再被运动本身掩盖,表现为微动;
-WebView 是纹理平移、AA 恒定,故丝滑。
-修复(patches/gpui-pre 第三处补丁):Window 增加 set_stable_glyph_raster,
-开启后固定亚像素相位为 (0,0)、sprite bounds 保留分数像素位置,
-由 GPU 双线性采样负责亚像素放置——与 WebView 的位图层移动等价。
-静止位是整像素(0.25H、2em 行高等推导),文字静止时依旧锐利;
-运动中略微过滤,与 web 一致。歌词页全窗口开启。
-(膨胀度经查恒 0,alpha 补间不会扰动光栅缓存键)
+一、回滚"稳定光栅"补丁(根因正确性):
+固定相位 + 分数位置采样的方案在图集瓦片边缘混入相邻字形像素,
+即用户看到的字间白色细线(分数偏移变化时闪烁)。该补丁已整体回滚。
 
-二、呈现无垂直同步:
-DirectXRenderer::Present(0) 不等待合成节拍,动画循环实测以 ~200fps
-过载 FLIP_SEQUENTIAL 3 缓冲翻转队列,DWM 采样相位漂移导致显示帧距
-不均。vendor gpui-pre-windows 并将 Present 改为 SyncInterval=1
-(patches/gpui-pre-windows/PATCH-NOTES.md)。DirectComposition 路径下
-该参数被系统忽略(实测仍 200fps,由 DWM 均匀采样兜底),但在非
-DCOMP 回退路径上是正确的节流,予以保留。
+二、正统架构:滚动偏移也走 GPU 变换:
+上游 AMLL 的滚动与缩放全部是 CSS transform(translateY + scale),
+排版零重排。对齐之:所有歌词行恒定叠放在布局原点,posY 与缩放
+全部经 with_element_transformation 的合成矩阵(p' = s·(p−C)+C+T)
+在绘制期应用。字形绘制位置逐帧不变 → 上游默认光栅化天然稳定,
+无逐帧重光栅、无分数采样,微动与白线两个问题从机制上同时消失。
+行本体不再承载事件,改为全窗口点击映射层(按可视纵带命中 seek)。
 
-其他:
-- .gitattributes:patches/** 标记 linguist-vendored,vendored 补丁
-  crate 不再计入仓库语言统计
-- compare-traces.mjs:剧本回跳 seek 使同一 media 区间被两遍播放各
-  记录一次,按 media 去重取墙钟较晚者,消除重采样的混叠噪声
+三、像素级追踪(--trace-pixels <dir>):
+- patches/gpui-pre-windows:DirectXRenderer::capture_last_frame
+  (staging 纹理读回最近呈现帧,不重绘不影响呈现)
+- patches/gpui-pre:PlatformWindow::capture_frame_pixels(默认 None)
+  + Window 公开包装
+- gpui-player:逐帧读回并做帧间逐像素差分,指标(meanDiff/
+  changedPx/maxDiff)写入 trace JSONL,ev:"pixel";变化帧按 1/8
+  采样存 PNG 供肉眼复核
 
-回归:23 测试全绿、clippy 0 警告、--trace 69s 全程跑通,
-与上游对比指标不变(scrollTo 0.07%、稳态 0.00px、缩放 ≤0.14%)。
+像素数据结论(本轮采集,3356 帧):
+- 所有过渡:平滑上升 → 单调衰减 → 到达后精确归零,稳态零残留
+- 换行 8400 全程:峰值 2.66 → 1.6s 内单调衰减至 0.000,其后全零
+- 大尖峰仅出现在剧本 seek 落点(行重新布局的 slow 滑入,符合预期)
+- 无任何"稳态下的周期性像素变化"(此前微动的特征已不存在)
+
+回归:23 测试全绿、clippy 0 警告、与上游对比指标不变
+(scrollTo 0.07%、稳态 0.00px、缩放 ≤0.14%)。
