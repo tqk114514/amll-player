@@ -85,6 +85,39 @@ const LINE_OPACITY_TRANSITION_SEC: f64 = 0.4;
 /// 排版原因(上游 LayoutReason)。策略映射(上游 consts.ts):
 /// stagger 仅正常播放开启;直贴 Y(snapPosY)仅连续滚动(触摸拖动跟手),
 /// 滚轮步进保留弹簧平滑;Seek/RebuildView 重置间奏演出。
+/// M5 验收:帧率计数(滑动 2s 窗口的原始帧间隔统计)
+#[derive(Debug, Default)]
+struct FpsCounter {
+    /// 原始帧间隔样本(秒;未被动画钳制污染)
+    samples: std::collections::VecDeque<f64>,
+}
+
+impl FpsCounter {
+    fn push(&mut self, raw_delta_sec: f64) {
+        if raw_delta_sec <= 0.0 {
+            return;
+        }
+        self.samples.push_back(raw_delta_sec);
+        while self.samples.len() > 2 && self.samples.iter().sum::<f64>() > 2.0 {
+            self.samples.pop_front();
+        }
+    }
+
+    fn fps(&self) -> f64 {
+        if self.samples.is_empty() {
+            return 0.0;
+        }
+        self.samples.len() as f64 / self.samples.iter().sum::<f64>()
+    }
+
+    fn avg_frame_ms(&self) -> f64 {
+        if self.samples.is_empty() {
+            return 0.0;
+        }
+        self.samples.iter().sum::<f64>() / self.samples.len() as f64 * 1000.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LayoutReason {
     PlaybackTick,
@@ -251,6 +284,8 @@ pub struct LyricPage {
     is_touch_scrolled: bool,
     /// 滚动触发的待重排版原因(策略映射的消费入口)
     scroll_dirty: Option<crate::scroll::ScrollLayoutReason>,
+    /// M5 验收:帧率计数
+    fps: FpsCounter,
 
     trace: Option<TraceState>,
     /// 像素级追踪(--trace-pixels):逐帧读回呈现输出并差分
@@ -312,6 +347,7 @@ impl LyricPage {
             is_auto_align_suspended: false,
             is_touch_scrolled: false,
             scroll_dirty: None,
+            fps: FpsCounter::default(),
             trace,
             pixel_trace: pixel_dir.map(PixelTrace::new),
             last_frame: None,
@@ -670,11 +706,12 @@ impl Render for LyricPage {
         } else {
             None
         };
-        let delta = self
+        let raw_delta = self
             .last_frame
             .map(|last| now.duration_since(last).as_secs_f64())
-            .unwrap_or(0.0)
-            .clamp(0.0, MAX_FRAME_DELTA_SEC);
+            .unwrap_or(0.0);
+        self.fps.push(raw_delta);
+        let delta = raw_delta.clamp(0.0, MAX_FRAME_DELTA_SEC);
         self.last_frame = Some(now);
 
         // 1) 时钟:trace 模式用确定性固定步进(与浏览器 harness 同构),
@@ -1086,6 +1123,23 @@ impl Render for LyricPage {
                 self.dots_dismiss = None;
             }
         }
+
+        // M5 验收:帧率叠层(右上角,不拦截交互——点击层在其后覆盖全窗)
+        children.push(
+            div()
+                .id("fps-overlay")
+                .absolute()
+                .top(px(8.0))
+                .right(px(12.0))
+                .text_size(px(12.0))
+                .text_color(gpui::hsla(0.0, 0.0, 1.0, 0.65))
+                .child(SharedString::from(format!(
+                    "{:.1} fps · {:.2} ms",
+                    self.fps.fps(),
+                    self.fps.avg_frame_ms(),
+                )))
+                .into_any_element(),
+        );
 
         // 全窗口点击映射层:按点击纵坐标命中的可视行发起 seek
         children.push(

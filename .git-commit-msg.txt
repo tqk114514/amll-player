@@ -1,21 +1,6 @@
-feat(gpui): M4b 拖动惯性滚动——ScrollInteractionEngine/FocusController 移植
+feat(gpui): M5 帧率面板——右上角 fps/帧耗叠层
 
-- scroll.rs:上游 ScrollInteractionEngine 状态机完整移植(8 项单测锁定):
-  触摸 10px 意图阈值、速度 px/ms 跟踪、松手惯性 0.95^(Δt/16.67) 衰减
-  (掉帧步进丢弃、|speed|≤0.05 停止、<0.1 归零)、滚轮 150ms 防抖
-  离散步进(行模式 ×50)、边界钳制(min/max 向 0 收拢)、滚动静止
-  500ms 后可恢复自动对齐;触摸按下打断惯性、轻点恢复收尾
-- layout.rs:FocusController(上游 focus.ts)——滚动挂起期间冻结上帧
-  焦点、冻结间奏遇结束顺延锚点后一行、未挂起跟随播放(3 项单测)
-- lyric_page.rs:
-  - LayoutReason 策略映射(上游 consts.ts):stagger 严格仅 PlaybackTick
-    (旧代码 config-change 也开,更贴上游);ContinuousScroll 直贴 Y
-    (触摸跟手)、DiscreteScroll 保留弹簧;滚动偏移经 update_boundary
-    钳制后进排版(预留的 bounds_min/max 接通)
-  - 恢复自动对齐:焦点行切换且新行入真实视口、滚动静止 ≥500ms →
-    重置回自动对齐;seek(非触摸滚动中)清空滚动状态
-  - 滚轮接线:Windows 原生符号取反为浏览器语义;挂起自动对齐
-  - 间奏 spacer 与焦点解耦(上游 ctx.interlude 只看 canDisplay,
-    残留高亮期间 spacer 与圆点保持)——修正 mid-song 间奏的布局跳变
-- 冒烟:与改造前 trace 逐帧对比——静止检查点(y/s/op/a)逐位一致,
-  retarget 序列对准全部优化行起始,弹簧轨迹同曲线;48 测试全绿
+- FpsCounter:滑动 2s 窗口的原始帧间隔统计(不经动画 delta 的
+  100ms 钳制污染);右上角 12px 白 0.65 文本
+- 叠层不拦截交互(点击映射层其后覆盖全窗);像素冒烟确认渲染:
+  采样区域亮度 169 = 0.65×255 与设定 alpha 逐位一致
