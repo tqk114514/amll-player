@@ -26,6 +26,10 @@ pub const FADE_EM: f64 = 0.6;
 pub const WORD_PAD_EM: f64 = 1.0;
 /// 渐变边缘的切片数(无 mask-image 的阶梯逼近)
 const FADE_SLICES: usize = 8;
+/// 逐词上浮量(上游 createFloatAnimation:-0.05em,composite add)
+const FLOAT_EM: f64 = 0.05;
+/// 上浮动画最短时长(上游 Math.max(1e3, 词时长))
+const FLOAT_MIN_MS: f64 = 1000.0;
 
 /// 词元(atom):CJK 单字 / 拉丁词组 / 空格(零时长)
 #[derive(Debug, Clone, PartialEq)]
@@ -194,6 +198,11 @@ pub fn reveal_edge(spans: &[WordSpan], index: usize, media_ms: f64, fade: f64, p
     pos + spans[index].width + pad + fade / 2.0
 }
 
+fn fade_slice_width(band: f64) -> f64 {
+    let n = FADE_SLICES as f64;
+    (band / n).max(0.01)
+}
+
 /// 渐变边缘处的内容 alpha 插值(bright→dark 的线性渐变)
 pub fn mask_alpha(edge: f64, fade: f64, x: f64, bright: f64, dark: f64) -> f64 {
     let t = ((x - (edge - fade / 2.0)) / fade).clamp(0.0, 1.0);
@@ -356,45 +365,56 @@ impl Element for WordLineElement {
         let origin_x = (bounds.origin.x / px(1.0)) as f64;
         let origin_y = (bounds.origin.y / px(1.0)) as f64;
         for (index, span) in self.spans.iter().enumerate() {
+            // 逐词上浮(上游 createFloatAnimation):词开始后 ease-out 上浮
+            // 0.05em,最短 1s,唱完保持(fill both),行失活时随重建复位
+            let float_offset = if self.active {
+                let duration = (span.end_ms - span.start_ms).max(FLOAT_MIN_MS);
+                let t = ((self.media_ms - span.start_ms) / duration).clamp(0.0, 1.0);
+                -self.font_size * FLOAT_EM * (1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t))
+            } else {
+                0.0
+            };
+            let span_y = origin_y + float_offset;
             if !self.active {
                 // solid 模式:整行单色
-                self.paint_span(window, cx, origin_x + span.x, origin_y, span, self.dark);
+                self.paint_span(window, cx, origin_x + span.x, span_y, span, self.dark);
                 continue;
             }
             let edge = reveal_edge(&self.spans, index, self.media_ms, self.fade, self.pad);
-            if edge <= 0.0 {
-                // 全暗
-                self.paint_span(window, cx, origin_x + span.x, origin_y, span, self.dark);
-            } else if edge - self.fade / 2.0 >= span.width {
-                // 全亮
-                self.paint_span(window, cx, origin_x + span.x, origin_y, span, self.bright);
-            } else {
-                // 揭示中:暗底 + 亮段 + 渐变带阶梯切片
-                self.paint_span(window, cx, origin_x + span.x, origin_y, span, self.dark);
-                let bright_end = (edge - self.fade / 2.0).min(span.width).max(0.0);
-                if bright_end > 0.0 {
-                    self.paint_slice(
-                        window,
-                        cx,
-                        (origin_x, origin_y),
-                        span,
-                        (0.0, bright_end),
-                        self.bright,
-                    );
+            // 分区绘制(与上游 mask 替换语义一致,不做暗底叠加):
+            // 亮头 [0, edge−F/2) / 渐变带 [edge−F/2, edge+F/2) / 暗尾 [edge+F/2, W]
+            let bright_end = (edge - self.fade / 2.0).min(span.width).max(0.0);
+            let band_from = (edge - self.fade / 2.0).max(0.0);
+            let band_to = (edge + self.fade / 2.0).min(span.width);
+            if bright_end > 0.0 {
+                self.paint_slice(
+                    window,
+                    cx,
+                    (origin_x, span_y),
+                    span,
+                    (0.0, bright_end),
+                    self.bright,
+                );
+            }
+            if band_to > band_from {
+                let slice = (band_to - band_from) / fade_slice_width(band_to - band_from);
+                for k in 0..FADE_SLICES {
+                    let from = band_from + k as f64 * slice;
+                    let to = (band_from + (k + 1) as f64 * slice).min(band_to);
+                    let mid = (from + to) / 2.0;
+                    let alpha = mask_alpha(edge, self.fade, mid, self.bright, self.dark);
+                    self.paint_slice(window, cx, (origin_x, span_y), span, (from, to), alpha);
                 }
-                let band_from = (edge - self.fade / 2.0).max(0.0);
-                let band_to = (edge + self.fade / 2.0).min(span.width);
-                if band_to > band_from {
-                    let slice = (band_to - band_from) / FADE_SLICES as f64;
-                    for k in 0..FADE_SLICES {
-                        let from = band_from + k as f64 * slice;
-                        let to = (band_from + (k + 1) as f64 * slice).min(band_to);
-                        let mid = (from + to) / 2.0;
-                        let alpha =
-                            mask_alpha(edge, self.fade, mid, self.bright, self.dark);
-                        self.paint_slice(window, cx, (origin_x, origin_y), span, (from, to), alpha);
-                    }
-                }
+            }
+            if band_to < span.width {
+                self.paint_slice(
+                    window,
+                    cx,
+                    (origin_x, span_y),
+                    span,
+                    (band_to, span.width),
+                    self.dark,
+                );
             }
         }
     }

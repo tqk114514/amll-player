@@ -85,43 +85,37 @@ pub struct AppliedSeek {
     pub to_ms: f64,
 }
 
-/// 虚拟时钟:确定性固定步进(每帧 +1000/60ms,delta 恒 1/60),
-/// 与浏览器 harness 完全同构——两侧行为逐帧可比,且不受各自真实帧率影响;
-/// 画面冻结只暂停推进,不产生数据空洞。剧本 seek 在 media 越过剧本点时跳变。
+/// 虚拟时钟:墙钟 1× 速度推进(media = 流逝墙钟 + seek 偏移),
+/// 与浏览器 harness 同构;画面冻结不产生数据空洞(墙钟连续,恢复后
+/// 采样点继续),帧节奏差异由对比脚本的重采样处理。
+/// 剧本 seek 以墙钟为轴:at_ms 为墙钟毫秒,to_ms 为跳转后的媒体时间。
 pub struct TraceClock {
-    media_ms: f64,
-    stepped: bool,
+    start: std::time::Instant,
+    offset_ms: f64,
     pending: std::collections::VecDeque<TraceSeek>,
 }
-
-/// 采集帧的固定时长(毫秒)
-pub const TRACE_FRAME_MS: f64 = 1000.0 / 60.0;
 
 impl TraceClock {
     pub fn new(score: &TraceScore) -> Self {
         Self {
-            media_ms: 0.0,
-            stepped: false,
+            start: std::time::Instant::now(),
+            offset_ms: 0.0,
             pending: score.seeks.clone().into(),
         }
     }
 
-    /// 当前虚拟媒体时间;首帧返回 0(与上游 setLyricLines 初始重建对齐),
-    /// 之后每帧推进固定步长;越过剧本点时应用 seek 并返回事件
+    /// 当前虚拟媒体时间;墙钟越过剧本点时应用 seek 并返回事件
     pub fn step_ms(&mut self, applied: &mut Vec<AppliedSeek>) -> f64 {
-        if self.stepped {
-            self.media_ms += TRACE_FRAME_MS;
-        }
-        self.stepped = true;
-        while self.pending.front().is_some_and(|seek| self.media_ms >= seek.at_ms) {
+        let wall = self.start.elapsed().as_millis() as f64;
+        while self.pending.front().is_some_and(|seek| wall >= seek.at_ms) {
             let seek = self.pending.pop_front().expect("front 已校验");
-            self.media_ms = seek.to_ms;
+            self.offset_ms += seek.to_ms - (wall + self.offset_ms);
             applied.push(AppliedSeek {
                 at_ms: seek.at_ms,
                 to_ms: seek.to_ms,
             });
         }
-        self.media_ms
+        wall + self.offset_ms
     }
 }
 

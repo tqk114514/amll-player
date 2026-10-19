@@ -451,23 +451,12 @@ impl Render for LyricPage {
         } else {
             None
         };
-        let had_last_frame = self.last_frame.is_some();
         let delta = self
             .last_frame
             .map(|last| now.duration_since(last).as_secs_f64())
             .unwrap_or(0.0)
             .clamp(0.0, MAX_FRAME_DELTA_SEC);
         self.last_frame = Some(now);
-        // trace 模式下弹簧步长与浏览器 harness 一致(确定性对比)
-        let delta = if self.trace.is_some() {
-            if had_last_frame {
-                1.0 / 60.0
-            } else {
-                0.0
-            }
-        } else {
-            delta
-        };
 
         // 1) 时钟:trace 模式用确定性固定步进(与浏览器 harness 同构),
         //    否则按音频事件外推
@@ -630,6 +619,26 @@ impl Render for LyricPage {
                 .collect();
             (ys, ss, as_, a_darks, ops, blurs, hl)
         });
+        // 焦点行各词元的揭示边缘(与浏览器 harness 的 reveal 采样对齐比对)
+        let fade = self.font_size * crate::words::FADE_EM;
+        let pad = self.font_size * crate::words::WORD_PAD_EM;
+        let probe_line = self.timeline.scroll_to_index();
+        let reveal: Vec<serde_json::Value> = self
+            .word_spans
+            .get(probe_line)
+            .map(|spans| {
+                spans
+                    .iter()
+                    .enumerate()
+                    .map(|(i, span)| {
+                        serde_json::json!({
+                            "e": crate::words::reveal_edge(spans, i, self.position_ms, fade, pad),
+                            "w": span.width,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         if let (Some(trace), Some((ys, ss, as_, a_darks, ops, blurs, hl))) =
             (self.trace.as_mut(), trace_snapshot)
         {
@@ -648,6 +657,7 @@ impl Render for LyricPage {
                 "scrollTo": self.timeline.scroll_to_index(),
                 "latest": latest,
                 "hl": hl,
+                "reveal": reveal,
                 "k": self.current_stiffness,
                 "d": self.current_damping,
                 "interludeY": self.last_interlude_y,

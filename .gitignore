@@ -29,3 +29,6 @@ packages/gpui-player/scripts/trace-harness/harness-core.mjs
 packages/gpui-player/scripts/trace-harness/captures/*.jsonl
 .zcode/
 packages/gpui-player/scripts/trace-harness/captures/pixels/
+
+# 用户本地歌词采集数据(经 user-ttml-to-lines.mjs 生成,不入库)
+packages/gpui-player/testdata/user-*.json

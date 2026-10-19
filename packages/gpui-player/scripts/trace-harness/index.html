@@ -64,13 +64,27 @@
 <script type="module">
 import { DomLyricPlayer, Duration, MediaTime } from "/packages/gpui-player/scripts/trace-harness/harness-core.mjs";
 
+const params = new URLSearchParams(location.search);
 const base = "/packages/gpui-player/testdata";
 const [lines, score] = await Promise.all([
-	(await fetch(`${base}/demo-lines.json`)).json(),
-	(await fetch(`${base}/demo-score.json`)).json(),
+	(await fetch(params.get("lines") ?? `${base}/demo-lines.json`)).json(),
+	(await fetch(params.get("score") ?? `${base}/demo-score.json`)).json(),
 ]);
 
 const stage = document.querySelector("#stage");
+// 等舞台拿到样式尺寸再建播放器:CSS 应用前的高度是内容高度(~77px),
+// ResizeObserver 先报告了错误尺寸会让整个布局基于错误高度(竞态)
+if (stage.getBoundingClientRect().height !== 700) {
+	await new Promise((resolve) => {
+		const observer = new ResizeObserver((entries, obs) => {
+			if (Math.round(entries[0].contentRect.height) === 700) {
+				obs.disconnect();
+				resolve();
+			}
+		});
+		observer.observe(stage);
+	});
+}
 const player = new DomLyricPlayer();
 stage.appendChild(player.getElement());
 
@@ -114,22 +128,21 @@ baseProto.calcLayout = function patchedCalcLayout(reason) {
 };
 
 const pendingSeeks = [...score.seeks].sort((a, b) => a.at_ms - b.at_ms);
-const FRAME_MS = 1000 / 60;
-// 确定性固定步进:与 GPUI 的 trace 模式逐帧同构(媒体时钟/弹簧步长
-// 都不依赖真实帧率;rAF 冻结只暂停推进,不产生数据空洞)
-let mediaMs = 0;
-let stepped = false;
+// 墙钟 1× 速度(真实播放节奏);rAF 冻结时数据不空洞(墙钟连续),
+// 帧节奏差异由对比脚本的重采样处理。seek 以墙钟为轴。
+const startTime = performance.now();
+let seekOffset = 0;
 let lastMedia = null;
+let lastFrameTime = -1;
 const frames = [];
 
 function nextMedia() {
-	if (stepped) mediaMs += FRAME_MS;
-	stepped = true;
-	while (pendingSeeks.length > 0 && mediaMs >= pendingSeeks[0].at_ms) {
+	const wall = performance.now() - startTime;
+	while (pendingSeeks.length > 0 && wall >= pendingSeeks[0].at_ms) {
 		const seek = pendingSeeks.shift();
-		mediaMs = seek.to_ms;
+		seekOffset += seek.to_ms - (wall + seekOffset);
 	}
-	return mediaMs;
+	return wall + seekOffset;
 }
 
 function sample(wall, media) {
@@ -164,6 +177,24 @@ function sample(wall, media) {
 		maskCls: groups.map((group) =>
 			group.mainLine.element.classList.contains("FmKaba_gradientMask"),
 		),
+		// 焦点行各词元的实时遮罩位置(WAAPI 驱动,computed style 可读):
+		// maskPosition → 与 GPUI 侧的揭示边缘是同一物理量,逐帧对齐比对
+		reveal: (() => {
+			const group = groups[snapshot.scrollToIndex];
+			const wrappers = [...group.mainLine.element.children[0].children];
+			return wrappers.map((wrapper) => {
+				// 带 mask 的词元素在 emphasizeWrapper 内层(无类名 span)
+				const el = wrapper.children[0] ?? wrapper;
+				const style = getComputedStyle(el);
+				const rect = el.getBoundingClientRect();
+				return {
+					pos: Number.parseFloat(style.maskPosition || style.webkitMaskPosition) || null,
+					w: rect.width,
+					h: rect.height,
+					pad: Number.parseFloat(style.paddingLeft) || null,
+				};
+			});
+		})(),
 		isActive: groups.map((_group, index) => {
 			const highlighted = snapshot.highlightedGroups.has(index);
 			return highlighted || (index >= snapshot.scrollToIndex && index < latest);
@@ -175,11 +206,12 @@ function sample(wall, media) {
 let lastTickAt = performance.now();
 function frame(time) {
 	lastTickAt = performance.now();
-	const first = !stepped;
+	const first = frames.length === 0;
 	const media = nextMedia();
 	frameMedia = media;
-	window.__traceDebug = { frames: frames.length, media, stepped };
-	const dt = first ? 0 : FRAME_MS;
+	window.__traceDebug = { frames: frames.length, media };
+	const dt = first ? 0 : time - lastFrameTime;
+	lastFrameTime = time;
 	// 与 react 包装层同构:先喂时间,再 update(dt) 推进弹簧并写样式
 	player.setCurrentTime(media);
 	player.update(dt);
