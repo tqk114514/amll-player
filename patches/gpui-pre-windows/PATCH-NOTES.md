@@ -22,6 +22,20 @@ vendored 自 crates.io 的 `gpui-pre-windows@0.3.9`(Windows D3D11/DirectWrite
 `PlatformWindow::capture_frame_pixels`(gpui-pre 补丁)对外暴露。
 仅诊断用途。
 
+## 变更点(三):文字精灵裁剪空间
+
+`src/shaders.hlsl` 的 `monochrome_sprite_vertex`(含 subpixel 复用):
+content_mask 的裁剪测试由 `distance_from_clip_rect_transformed`
+(变换后位置 vs 未变换遮罩)改为 `distance_from_clip_rect`
+(局部位置 vs 局部遮罩)。
+
+上游的变换后测试在 `with_element_transformation` 作用域内会因
+矩阵平移把被 with_content_mask 遮罩的文字全部裁空(遮罩在绘制空间
+定义、位置却已在视觉空间);遮罩与 bounds 同处一个坐标空间,局部
+测试才是 `with_content_mask` 的正确语义。AMLL 的逐词渐变揭示
+(内容裁剪切片 × 绘制期变换)依赖此修复,否则激活行整行不可见。
+旋转 SVG 等元素宽祖先遮罩的小幅变换场景下两种测试差异可忽略。
+
 ## 维护
 
 升级 gpui-kit(连带 gpui-pre-windows 版本)时,对照新版

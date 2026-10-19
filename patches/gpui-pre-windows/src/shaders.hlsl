@@ -1169,7 +1169,10 @@ MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexI
     MonochromeSprite sprite = mono_sprites[sprite_id];
     float4 device_position =
         to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
-    float4 clip_distance = distance_from_clip_rect_transformed(unit_vertex, sprite.bounds, sprite.content_mask, sprite.transformation);
+    // [AMLL patch] 文字精灵的 content_mask 在绘制空间(与 bounds 同空间)定义,
+    // 裁剪测试必须在局部空间做:变换后的位置 vs 未变换遮罩会把处于
+    // with_element_transformation 作用域内的被遮罩文字全部裁空。
+    float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds, sprite.content_mask);
     float2 tile_position = to_tile_position(unit_vertex, sprite.tile);
     float4 color = hsla_to_rgba(sprite.color);
 

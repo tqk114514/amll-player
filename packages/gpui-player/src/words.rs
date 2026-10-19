@@ -198,11 +198,6 @@ pub fn reveal_edge(spans: &[WordSpan], index: usize, media_ms: f64, fade: f64, p
     pos + spans[index].width + pad + fade / 2.0
 }
 
-fn fade_slice_width(band: f64) -> f64 {
-    let n = FADE_SLICES as f64;
-    (band / n).max(0.01)
-}
-
 /// 渐变边缘处的内容 alpha 插值(bright→dark 的线性渐变)
 pub fn mask_alpha(edge: f64, fade: f64, x: f64, bright: f64, dark: f64) -> f64 {
     let t = ((x - (edge - fade / 2.0)) / fade).clamp(0.0, 1.0);
@@ -302,6 +297,7 @@ impl WordLineElement {
         if width <= 0.0 {
             return;
         }
+
         let mask = ContentMask {
             bounds: Bounds {
                 origin: point(px(left as f32), px(bounds_origin.1 as f32)),
@@ -397,7 +393,7 @@ impl Element for WordLineElement {
                 );
             }
             if band_to > band_from {
-                let slice = (band_to - band_from) / fade_slice_width(band_to - band_from);
+                let slice = (band_to - band_from) / FADE_SLICES as f64;
                 for k in 0..FADE_SLICES {
                     let from = band_from + k as f64 * slice;
                     let to = (band_from + (k + 1) as f64 * slice).min(band_to);
