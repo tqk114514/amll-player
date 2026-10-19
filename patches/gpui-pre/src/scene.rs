@@ -705,6 +705,47 @@ impl Default for TransformationMatrix {
     }
 }
 
+/// [AMLL patch] 单色/次像素精灵的水平 alpha 渐变遮罩。
+///
+/// 上游 AMLL 的逐词揭示是 CSS `mask-image: linear-gradient(to right,
+/// bright …, dark …)`:合成器把元素内容逐像素乘以渐变遮罩值。GPUI 无
+/// mask-image,此结构把同一渐变直接带进精灵——局部空间(与 `bounds`
+/// 同空间、变换前的坐标)x ≤ `x_start` 处 alpha 为 `alpha_left`,
+/// x ≥ `x_end` 处为 `alpha_right`,带内线性插值,由平台渲染器的像素
+/// 着色器逐像素应用(等价于 Web 引擎的合成器遮罩,无阶梯近似)。
+///
+/// 两侧 alpha 相等时退化为均匀半透明;[`SpriteGradient::IDENTITY`]
+/// 为全不透明的空操作。Rust/HLSL 两侧布局必须逐字节一致(结构体经
+/// 原始拷贝进入 StructuredBuffer,当前尺寸 128 字节 = 8×16)。
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[repr(C)]
+pub struct SpriteGradient {
+    /// 渐变带左缘(设备像素,与精灵 bounds 同空间)
+    pub x_start: f32,
+    /// 渐变带右缘
+    pub x_end: f32,
+    /// 带左及其以左的 alpha
+    pub alpha_left: f32,
+    /// 带右及其以右的 alpha
+    pub alpha_right: f32,
+}
+
+impl SpriteGradient {
+    /// 空操作:两 alpha 皆为 1,任何 x 下插值结果恒为 1
+    pub const IDENTITY: Self = Self {
+        x_start: 0.0,
+        x_end: 1.0,
+        alpha_left: 1.0,
+        alpha_right: 1.0,
+    };
+}
+
+impl Default for SpriteGradient {
+    fn default() -> Self {
+        Self::IDENTITY
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 #[expect(missing_docs)]
@@ -716,6 +757,8 @@ pub struct MonochromeSprite {
     pub color: Hsla,
     pub tile: AtlasTile,
     pub transformation: TransformationMatrix,
+    /// [AMLL patch] 水平 alpha 渐变遮罩(CSS mask-image 等价)
+    pub gradient: SpriteGradient,
 }
 
 impl From<MonochromeSprite> for Primitive {
@@ -735,6 +778,8 @@ pub struct SubpixelSprite {
     pub color: Hsla,
     pub tile: AtlasTile,
     pub transformation: TransformationMatrix,
+    /// [AMLL patch] 水平 alpha 渐变遮罩(CSS mask-image 等价)
+    pub gradient: SpriteGradient,
 }
 
 impl From<SubpixelSprite> for Primitive {

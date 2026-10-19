@@ -6,16 +6,19 @@
 //! 的 mask-position 由同一"共享光标"时间线驱动——词元内匀速扫过
 //! (宽/时长)、词元间停留,首词元多扫 1.5×渐变宽、末词元多扫 0.5×,
 //! clamp 保证词元前全暗、词元后全亮;词元自带 1em padding(布局被
-//! margin 抵消),是扫入前的预滚缓冲区。激活行 bright=1.0/dark=0.4,
-//! 未激活行为整行 solid 0.2(经行 opacity 0.85/1.0 调制)。
+//! margin 抵消),是扫入前的预滚缓冲区。mask 常驻所有行:未激活行
+//! `--bright/--dark-mask-alpha` 同为 .2(均匀暗),激活行加
+//! `.gradientMask` 类变 1/.4,两个 alpha 都是 `@property` 注册的可过渡
+//! 自定义属性——激活 0.3s ease-out、退激活 0.45s ease-out(退激活时
+//! maskAnimator.pause() 冻结遮罩位置,已唱部分平滑回落而非瞬间消失)。
 //!
-//! GPUI 无 mask-image:用 with_content_mask 裁剪 + 阶梯 alpha 切片
-//! (FADE_SLICES 段)等价实现渐变边缘。
+//! GPUI 渲染:CSS mask 无原生等价,经本地 patch(gpui-pre
+//! `with_element_mask_gradient` + 平台着色器)以**像素级线性 alpha
+//! 渐变**实现——与 Web 合成器逐像素乘渐变遮罩同构,无阶梯近似。
 
 use gpui::{
-    App, Bounds, ContentMask, Element, ElementId, Font, GlobalElementId, Hsla,
-    InspectorElementId, IntoElement, LayoutId, Pixels, SharedString, Style, TextAlign, TextRun,
-    Window, point, px, size,
+    App, Element, ElementId, Font, GlobalElementId, Hsla, InspectorElementId, IntoElement,
+    LayoutId, Pixels, SharedString, Style, TextAlign, TextRun, Window, point, px, size,
 };
 
 use crate::timeline::LyricWord;
@@ -24,7 +27,6 @@ use crate::timeline::LyricWord;
 pub const FADE_EM: f64 = 0.6;
 /// 词元 padding(上游 1em,margin −1em 抵消布局)
 pub const WORD_PAD_EM: f64 = 1.0;
-/// 渐变边缘的阶梯逼近切片:按 1px/片动态取(无 mask-image 的等价实现)
 /// 逐词上浮量(上游 createFloatAnimation:-0.05em,composite add)
 const FLOAT_EM: f64 = 0.05;
 /// 上浮动画最短时长(上游 Math.max(1e3, 词时长))
@@ -47,6 +49,16 @@ pub struct WordSpan {
     /// 行内内容左缘偏移(逻辑像素,布局时测得)
     pub x: f64,
     pub width: f64,
+}
+
+/// 退激活后的上浮反演状态(上游 `disable()` 把 float-word 动画
+/// `playbackRate = -1` 续播到 0,词元按各自已推进的时长匀速落回)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FloatReverse {
+    /// 反演已推进的墙钟(毫秒;由调用方按帧增量累加,不渲染即暂停)
+    pub elapsed_ms: f64,
+    /// 退激活时刻的媒体时间(float 起点与遮罩位置一并冻结于此)
+    pub media_at_disable_ms: f64,
 }
 
 fn is_cjk_char(ch: char) -> bool {
@@ -197,24 +209,48 @@ pub fn reveal_edge(spans: &[WordSpan], index: usize, media_ms: f64, fade: f64, p
     pos + spans[index].width + pad + fade / 2.0
 }
 
-/// 渐变边缘处的内容 alpha 插值(bright→dark 的线性渐变)
-pub fn mask_alpha(edge: f64, fade: f64, x: f64, bright: f64, dark: f64) -> f64 {
-    let t = ((x - (edge - fade / 2.0)) / fade).clamp(0.0, 1.0);
-    dark + (bright - dark) * (1.0 - t)
+/// 单个词元的上浮进度(0..1,未经缓动):激活期随媒体时间推进;
+/// 退激活后从冻结值按墙钟匀速反演回 0(反向播放时长 = 已推进时长)
+pub fn float_progress(
+    span: &WordSpan,
+    media_ms: f64,
+    reverse: Option<&FloatReverse>,
+) -> f64 {
+    let duration = (span.end_ms - span.start_ms).max(FLOAT_MIN_MS);
+    match reverse {
+        None => ((media_ms - span.start_ms) / duration).clamp(0.0, 1.0),
+        Some(reverse) => {
+            let t0 = ((reverse.media_at_disable_ms - span.start_ms) / duration).clamp(0.0, 1.0);
+            (t0 - reverse.elapsed_ms / duration).clamp(0.0, t0)
+        }
+    }
 }
 
-/// 逐词揭示行元素:静态词布局 + 每帧按媒体时间计算各 span 的揭示边缘,
-/// 以内容裁剪 + 阶梯 alpha 切片绘制。
+/// 退激活反演是否全部结束(所有词元的上浮都回到 0)
+pub fn float_reverse_finished(spans: &[WordSpan], reverse: &FloatReverse) -> bool {
+    spans.iter().all(|span| {
+        float_progress(span, f64::INFINITY, Some(reverse)) <= 0.0
+    })
+}
+
+/// 逐词揭示行元素:静态词布局 + 每帧按(冻结或当前的)媒体时间计算各
+/// span 的揭示边缘,以精灵像素渐变单次绘制(亮暗 alpha 经补间驱动,
+/// 激活/退激活的亮度过渡由调用方传入的补间值完成)。
 pub struct WordLineElement {
     spans: Vec<WordSpan>,
     font: Font,
     font_size: f64,
     line_height: f64,
-    /// gradient 模式(bright/dark 双色揭示);false = solid(整行单色)
-    active: bool,
+    /// 遮罩亮端 alpha(上游 --bright-mask-alpha,随激活补间变化)
     bright: f64,
+    /// 遮罩暗端 alpha(上游 --dark-mask-alpha)
     dark: f64,
     media_ms: f64,
+    /// 退激活期间冻结的媒体时间(上游 maskAnimator.pause():遮罩位置
+    /// 停在退激活瞬间,已唱部分随 alpha 回落平滑变暗)
+    frozen_media_ms: Option<f64>,
+    /// 退激活后的上浮反演(为 None 时随媒体时间正向推进)
+    float_reverse: Option<FloatReverse>,
     fade: f64,
     pad: f64,
 }
@@ -226,20 +262,22 @@ impl WordLineElement {
         font: Font,
         font_size: f64,
         line_height: f64,
-        active: bool,
         bright: f64,
         dark: f64,
         media_ms: f64,
+        frozen_media_ms: Option<f64>,
+        float_reverse: Option<FloatReverse>,
     ) -> Self {
         Self {
             spans,
             font,
             font_size,
             line_height,
-            active,
             bright,
             dark,
             media_ms,
+            frozen_media_ms,
+            float_reverse,
             fade: font_size * FADE_EM,
             pad: font_size * WORD_PAD_EM,
         }
@@ -280,75 +318,6 @@ impl WordLineElement {
             )
             .ok();
     }
-
-    fn paint_slice(
-        &self,
-        window: &mut Window,
-        cx: &mut App,
-        bounds_origin: (f64, f64),
-        span: &WordSpan,
-        range: (f64, f64),
-        alpha: f64,
-    ) {
-        let (from, to) = range;
-        let left = (bounds_origin.0 + span.x + from).max(bounds_origin.0);
-        let width = (to - from).max(0.0);
-        if width <= 0.0 {
-            return;
-        }
-
-        let mask = ContentMask {
-            bounds: Bounds {
-                origin: point(px(left as f32), px(bounds_origin.1 as f32)),
-                size: size(px(width as f32), px(self.line_height as f32)),
-            },
-        };
-        window.with_content_mask(Some(mask), |window| {
-            self.paint_span(window, cx, bounds_origin.0 + span.x, bounds_origin.1, span, alpha);
-        });
-    }
-
-    /// 揭示中的单个词元:分区绘制(与上游 mask 替换语义一致,不做暗底叠加):
-    /// 亮头 [0, edge−F/2) / 渐变带 [edge−F/2, edge+F/2) / 暗尾 [edge+F/2, W)
-    fn paint_reveal_span(
-        &self,
-        window: &mut Window,
-        cx: &mut App,
-        origin_x: f64,
-        origin_y: f64,
-        index: usize,
-        span: &WordSpan,
-    ) {
-        let edge = reveal_edge(&self.spans, index, self.media_ms, self.fade, self.pad);
-        let bright_end = (edge - self.fade / 2.0).min(span.width).max(0.0);
-        let band_from = (edge - self.fade / 2.0).max(0.0);
-        let band_to = (edge + self.fade / 2.0).min(span.width);
-        if bright_end > 0.0 {
-            self.paint_slice(window, cx, (origin_x, origin_y), span, (0.0, bright_end), self.bright);
-        }
-        if band_to > band_from {
-            // 渐变带按 1px/片阶梯逼近,消除肉眼可见的分层
-            let slices = (self.fade.ceil() as usize).max(2);
-            let slice = (band_to - band_from) / slices as f64;
-            for k in 0..slices {
-                let from = band_from + k as f64 * slice;
-                let to = (band_from + (k + 1) as f64 * slice).min(band_to);
-                let mid = (from + to) / 2.0;
-                let alpha = mask_alpha(edge, self.fade, mid, self.bright, self.dark);
-                self.paint_slice(window, cx, (origin_x, origin_y), span, (from, to), alpha);
-            }
-        }
-        if band_to < span.width {
-            self.paint_slice(
-                window,
-                cx,
-                (origin_x, origin_y),
-                span,
-                (band_to, span.width),
-                self.dark,
-            );
-        }
-    }
 }
 
 impl Element for WordLineElement {
@@ -382,7 +351,7 @@ impl Element for WordLineElement {
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>,
+        _bounds: gpui::Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         _window: &mut Window,
         _cx: &mut App,
@@ -393,7 +362,7 @@ impl Element for WordLineElement {
         &mut self,
         _id: Option<&GlobalElementId>,
         _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>,
+        bounds: gpui::Bounds<Pixels>,
         _request_layout: &mut Self::RequestLayoutState,
         _prepaint: &mut Self::PrepaintState,
         window: &mut Window,
@@ -401,32 +370,59 @@ impl Element for WordLineElement {
     ) {
         let origin_x = (bounds.origin.x / px(1.0)) as f64;
         let origin_y = (bounds.origin.y / px(1.0)) as f64;
+        // 两个 alpha 相等 = 均匀半透明(未激活稳态/补间收敛),单色直绘;
+        // 相异 = 渐变揭示(激活中或退激活回落中)
+        let solid = (self.bright - self.dark).abs() < 1e-4;
+        let mask_media = self.frozen_media_ms.unwrap_or(self.media_ms);
+        let scale_factor = window.scale_factor();
+
         for (index, span) in self.spans.iter().enumerate() {
-            if !self.active {
-                // solid 模式:整行单色
-                self.paint_span(window, cx, origin_x + span.x, origin_y, span, self.dark);
-                continue;
-            }
-            // 逐词上浮(上游 createFloatAnimation):词开始后 ease-out 上浮
-            // 0.05em,最短 1s,唱完保持。经绘制期矩阵平移(顶点着色器
+            let span_x = origin_x + span.x;
+            // 逐词上浮(上游 createFloatAnimation,ease-out 关键帧;
+            // 退激活按墙钟反演回落)。经绘制期矩阵平移(顶点着色器
             // 精度)而非平移原点——字形原点按整像素吸附,直接平移会让
             // 1.75px 的上浮变成一两次 1px 瞬移
-            let float_offset = {
-                let duration = (span.end_ms - span.start_ms).max(FLOAT_MIN_MS);
-                let t = ((self.media_ms - span.start_ms) / duration).clamp(0.0, 1.0);
-                -self.font_size * FLOAT_EM * (1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t))
-            };
-            let scale_factor = window.scale_factor();
+            let float_t = float_progress(span, self.media_ms, self.float_reverse.as_ref());
+            let float_offset = -self.font_size * FLOAT_EM * crate::ease::ease_out()(float_t);
             let float_matrix = gpui::TransformationMatrix {
                 rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
                 translation: [0.0, (float_offset * scale_factor as f64) as f32],
             };
-            window.with_element_transformation(float_matrix, |window| {
-                self.paint_reveal_span(window, cx, origin_x, origin_y, index, span);
-            });
+            let edge = if solid {
+                None
+            } else {
+                Some(reveal_edge(
+                    &self.spans,
+                    index,
+                    mask_media,
+                    self.fade,
+                    self.pad,
+                ))
+            };
+
+            if let Some(edge) = edge {
+                // 渐变带 [edge−F/2, edge+F/2]:带左亮、带右暗,带内
+                // 逐像素线性插值(着色器),与上游 mask 渐变语义一致
+                let band_left = span_x + edge - self.fade / 2.0;
+                let band_right = span_x + edge + self.fade / 2.0;
+                window.with_element_mask_gradient(
+                    px(band_left as f32),
+                    px(band_right as f32),
+                    self.bright as f32,
+                    self.dark as f32,
+                    |window| {
+                        window.with_element_transformation(float_matrix, |window| {
+                            self.paint_span(window, cx, span_x, origin_y, span, 1.0);
+                        });
+                    },
+                );
+            } else {
+                window.with_element_transformation(float_matrix, |window| {
+                    self.paint_span(window, cx, span_x, origin_y, span, self.dark);
+                });
+            }
         }
     }
-
 }
 
 impl IntoElement for WordLineElement {
@@ -533,12 +529,22 @@ mod tests {
     }
 
     #[test]
-    fn mask_alpha_interpolates_across_band() {
-        let edge = 50.0;
-        let fade = 20.0;
-        assert!((mask_alpha(edge, fade, 30.0, 1.0, 0.4) - 1.0).abs() < 1e-9, "带左全亮");
-        assert!((mask_alpha(edge, fade, 70.0, 1.0, 0.4) - 0.4).abs() < 1e-9, "带右全暗");
-        let mid = mask_alpha(edge, fade, 50.0, 1.0, 0.4);
-        assert!((mid - 0.7).abs() < 1e-9, "带中为亮暗中点,got {mid}");
+    fn float_progress_advances_with_media_and_reverses_on_disable() {
+        let s = span("词", 1000.0, 2000.0, 0.0, 40.0);
+        // 未开始:0;结束后:1
+        assert!(float_progress(&s, 500.0, None) <= 0.0);
+        assert!((float_progress(&s, 3000.0, None) - 1.0).abs() < 1e-9);
+        // 中点:0.5(时长 1000 ≥ 最短 1000)
+        assert!((float_progress(&s, 1500.0, None) - 0.5).abs() < 1e-9);
+        // 退激活:冻结在半程,反演以 1× 回退(currentTime 递减)——
+        // t0=0.5×1000ms 后归零,走 250ms 时剩 0.25
+        let reverse = FloatReverse { elapsed_ms: 0.0, media_at_disable_ms: 1500.0 };
+        assert!((float_progress(&s, f64::INFINITY, Some(&reverse)) - 0.5).abs() < 1e-9);
+        let quarter = FloatReverse { elapsed_ms: 250.0, media_at_disable_ms: 1500.0 };
+        assert!((float_progress(&s, f64::INFINITY, Some(&quarter)) - 0.25).abs() < 1e-9);
+        let done = FloatReverse { elapsed_ms: 500.0 + 1e-9, media_at_disable_ms: 1500.0 };
+        assert!(float_reverse_finished(&[s.clone()], &done), "反演结束");
+        let undone = FloatReverse { elapsed_ms: 499.0, media_at_disable_ms: 1500.0 };
+        assert!(!float_reverse_finished(&[s], &undone));
     }
 }

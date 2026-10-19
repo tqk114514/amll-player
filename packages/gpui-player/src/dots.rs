@@ -41,49 +41,24 @@ pub const DOT_GAP_EM: f64 = 0.18;
 /// 圆点行内容的上下留白(上游 padding .4em,即 dotMargin)
 pub const DOT_MARGIN_EM: f64 = 0.4;
 
-/// 三次贝塞尔缓动(时间→进度):牛顿法解 x(s)=t 再求 y(s)
-fn bezier(x1: f64, y1: f64, x2: f64, y2: f64) -> impl Fn(f64) -> f64 {
-    move |t| {
-        let t = t.clamp(0.0, 1.0);
-        // 贝塞尔参数化:x(s) = 3(1-s)²s·x1 + 3(1-s)s²·x2 + s³
-        let x_at = |s: f64| 3.0 * (1.0 - s) * (1.0 - s) * s * x1 + 3.0 * (1.0 - s) * s * s * x2 + s * s * s;
-        let mut low = 0.0;
-        let mut high = 1.0;
-        let mut s = t;
-        for _ in 0..24 {
-            let x = x_at(s);
-            if (x - t).abs() < 1e-7 {
-                break;
-            }
-            if x < t {
-                low = s;
-            } else {
-                high = s;
-            }
-            s = (low + high) / 2.0;
-        }
-        3.0 * (1.0 - s) * (1.0 - s) * s * y1 + 3.0 * (1.0 - s) * s * s * y2 + s * s * s
-    }
-}
-
 fn lighting_easing() -> impl Fn(f64) -> f64 {
-    bezier(0.56, 0.01, 0.45, 1.0)
+    crate::ease::css_bezier(0.56, 0.01, 0.45, 1.0)
 }
 
 fn enter_fade_easing() -> impl Fn(f64) -> f64 {
-    bezier(0.59, 0.02, 0.07, 1.0)
+    crate::ease::css_bezier(0.59, 0.02, 0.07, 1.0)
 }
 
 fn exit_phase1_easing() -> impl Fn(f64) -> f64 {
-    bezier(0.14, 0.06, 0.25, 1.0)
+    crate::ease::css_bezier(0.14, 0.06, 0.25, 1.0)
 }
 
 fn exit_phase2_easing() -> impl Fn(f64) -> f64 {
-    bezier(0.29, 0.03, 1.0, 0.38)
+    crate::ease::css_bezier(0.29, 0.03, 1.0, 0.38)
 }
 
 fn exit_fade_easing() -> impl Fn(f64) -> f64 {
-    bezier(0.43, 0.08, 0.83, 0.31)
+    crate::ease::css_bezier(0.43, 0.08, 0.83, 0.31)
 }
 
 fn clamp01(v: f64) -> f64 {

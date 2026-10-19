@@ -11,6 +11,7 @@ mod layout;
 mod lyric_page;
 mod spring;
 mod dots;
+mod ease;
 mod timeline;
 mod transform;
 mod words;

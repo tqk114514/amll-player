@@ -36,6 +36,19 @@ content_mask 的裁剪测试由 `distance_from_clip_rect_transformed`
 (内容裁剪切片 × 绘制期变换)依赖此修复,否则激活行整行不可见。
 旋转 SVG 等元素宽祖先遮罩的小幅变换场景下两种测试差异可忽略。
 
+## 变更点(四):文字精灵的水平 alpha 渐变遮罩
+
+`src/shaders.hlsl`(带 `[AMLL patch]` 注释):`MonochromeSprite` 结构体
+追加 `float4 gradient`(与 gpui-pre 补丁的 Rust `SpriteGradient` 布局
+逐字节一致,追加在 112 字节偏移,总尺寸 128);`monochrome_sprite_vertex`
+新增插值输出 `local_x`(局部空间设备像素,变换前——与 CSS mask 在
+transform 下定义于元素空间的语义一致)与恒定 `mask_gradient`;
+`monochrome_sprite_fragment`/`subpixel_sprite_fragment` 按
+`sprite_mask_gradient_alpha` 逐像素线性插值乘入 alpha。
+
+这是 CSS `mask-image: linear-gradient` 的合成器等价实现:带内逐像素
+线性插值、带外取端值,替代先前的内容裁剪切片逼近(有可见带状)。
+
 ## 维护
 
 升级 gpui-kit(连带 gpui-pre-windows 版本)时,对照新版

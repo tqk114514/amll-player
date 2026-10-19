@@ -1,7 +1,7 @@
 # gpui-pre 0.3.9 本地补丁说明
 
 vendored 自 crates.io 的 `gpui-pre@0.3.9`(gpui-kit 0.7.3 锁定的快照),
-仅做一处最小改动:**暴露绘制期的元素变换**。
+仅做最小改动:**暴露绘制期的元素变换**与**水平 alpha 渐变遮罩**。
 
 ## 背景
 
@@ -35,6 +35,26 @@ vendored 自 crates.io 的 `gpui-pre@0.3.9`(gpui-kit 0.7.3 锁定的快照),
 分数采样会在图集瓦片边缘混入相邻字形的像素,表现为字间白色细线;
 正确解法是把滚动偏移也并入绘制期变换、布局完全静态,字形绘制位置
 恒定后上游默认光栅化天然稳定,无需任何特殊处理。
+
+## 变更点(二):水平 alpha 渐变遮罩(CSS mask-image 等价)
+
+`src/scene.rs` + `src/window.rs`(带 `[AMLL patch]` 注释):
+
+1. `scene.rs` 新增 `SpriteGradient`(x_start/x_end/alpha_left/alpha_right,
+   `#[repr(C)]` 16 字节),`MonochromeSprite`/`SubpixelSprite` 各追加
+   `gradient` 字段(追加在结构体末尾,两平台 HLSL 布局镜像同步)。
+2. `Window` 新增 `element_mask_gradient_stack` 与
+   `pub fn with_element_mask_gradient(x_start, x_end, alpha_left, alpha_right, f)`
+   (与 with_element_transformation 同构的绘制期作用域;坐标取逻辑像素,
+   入栈时按 scale_factor 换算设备像素,与精灵 bounds 同空间)。
+   `paint_glyph` 的两种文字精灵与 `paint_svg` 的 MonochromeSprite 插入处
+   携带 `self.element_mask_gradient()`。
+
+上游 AMLL 的逐词揭示是 CSS `mask-image: linear-gradient(to right,
+bright …, dark …)`:合成器把文字内容逐像素乘以渐变遮罩 alpha。此前
+用"内容裁剪切片 + 阶梯 alpha"逼近,1px/片仍有肉眼可见的带状;改为
+精灵携带渐变、像素着色器逐像素插值后与 Web 渲染逐像素等价,顺带把
+每词 20+ 次遮罩重绘降为单次绘制。
 
 ## 已知边界
 

@@ -1145,6 +1145,10 @@ struct MonochromeSprite {
     Hsla color;
     AtlasTile tile;
     TransformationMatrix transformation;
+    // [AMLL patch] 水平 alpha 渐变遮罩:x_start/x_end/alpha_left/alpha_right。
+    // 布局须与 Rust 侧 SpriteGradient 逐字节一致(结构体经原始拷贝入
+    // StructuredBuffer;追加在 112 字节偏移处,总尺寸 128 = 8×16)。
+    float4 gradient;
 };
 
 struct MonochromeSpriteVertexOutput {
@@ -1152,6 +1156,11 @@ struct MonochromeSpriteVertexOutput {
     float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
     float4 clip_distance: SV_ClipDistance;
+    // [AMLL patch] 遮罩渐变:局部空间 x(设备像素,与 bounds 同空间、
+    // 变换前——遮罩定义在元素局部空间,与 CSS mask 在 transform 下的
+    // 语义一致)+ 渐变参数(每精灵恒定)
+    float local_x: TEXCOORD0;
+    nointerpolation float4 mask_gradient: TEXCOORD1;
 };
 
 struct MonochromeSpriteFragmentInput {
@@ -1159,9 +1168,19 @@ struct MonochromeSpriteFragmentInput {
     float2 tile_position: POSITION;
     nointerpolation float4 color: COLOR;
     float4 clip_distance: SV_ClipDistance;
+    float local_x: TEXCOORD0;
+    nointerpolation float4 mask_gradient: TEXCOORD1;
 };
 
 StructuredBuffer<MonochromeSprite> mono_sprites: register(t1);
+
+// [AMLL patch] CSS mask-image 线性渐变等价:带内逐像素线性插值、带外取
+// 端值——与 Web 合成器把内容逐像素乘以渐变遮罩 alpha 的做法一致。
+float sprite_mask_gradient_alpha(float local_x, float4 gradient) {
+    float span = max(gradient.y - gradient.x, 1e-6);
+    float t = saturate((local_x - gradient.x) / span);
+    return lerp(gradient.z, gradient.w, t);
+}
 
 MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
@@ -1181,13 +1200,16 @@ MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexI
     output.tile_position = tile_position;
     output.color = color;
     output.clip_distance = clip_distance;
+    output.local_x = sprite.bounds.origin.x + unit_vertex.x * sprite.bounds.size.x;
+    output.mask_gradient = sprite.gradient;
     return output;
 }
 
 float4 monochrome_sprite_fragment(MonochromeSpriteFragmentInput input): SV_Target {
     float sample = t_sprite.Sample(s_sprite, input.tile_position).r;
     float alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
-    return float4(input.color.rgb, input.color.a * alpha_corrected);
+    float mask_alpha = sprite_mask_gradient_alpha(input.local_x, input.mask_gradient);
+    return float4(input.color.rgb, input.color.a * alpha_corrected * mask_alpha);
 }
 
 MonochromeSpriteVertexOutput subpixel_sprite_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
@@ -1200,10 +1222,11 @@ SubpixelSpriteFragmentOutput subpixel_sprite_fragment(MonochromeSpriteFragmentIn
         sample = sample.bgr;
     }
     float3 alpha_corrected = apply_contrast_and_gamma_correction3(sample, input.color.rgb, subpixel_enhanced_contrast, gamma_ratios);
+    float mask_alpha = sprite_mask_gradient_alpha(input.local_x, input.mask_gradient);
 
     SubpixelSpriteFragmentOutput output;
     output.foreground = float4(input.color.rgb, 1.0f);
-    output.alpha = float4(input.color.a * alpha_corrected, 1.0f);
+    output.alpha = float4(input.color.a * alpha_corrected * mask_alpha, 1.0f);
     return output;
 }
 

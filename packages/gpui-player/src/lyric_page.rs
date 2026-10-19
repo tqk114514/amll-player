@@ -8,13 +8,21 @@
 //! - posY 弹簧按"焦点行与索引上一行"的间隔动态刚度;仅正常播放(PlaybackTick)
 //!   开启 stagger——自视口顶部向下累积,焦点行也带延迟;seek/重建禁用
 //! - 缩放 97/100 两档:上游用 `transform: scale()`(transform-origin 为行元素
-//!   左缘垂直居中;左对齐文字下缩放前后的文字共享左缘与垂直中心)。
-//!   GPUI 无文字变换 API,用两层静态排版(100%/97% 字号)交叉淡化等价近似,
-//!   无逐帧重排版抖动、无档位跳变
-//! - 文本 alpha:未激活 0.2(≈0.45s ease-out 过渡)、激活 0.85
-//!   (上游 = 行 opacity × mask alpha:1.0×0.2 / 0.85×1.0;blur 是 Phase 2)
-//! - 间奏:圆点行占位 spacer 已按上游参与布局(圆点视觉呈现属 Phase 2),
-//!   焦点可为圆点行(圆点顶部对齐视口 25%)
+//!   左缘垂直居中;左对齐文字下缩放前后的文字共享左缘与垂直中心),
+//!   经绘制期元素变换矩阵作用于字形精灵(本地 patch)
+//! - 行亮度(上游两条独立 CSS transition 叠加):
+//!   1. wrapper opacity `transition: opacity .4s ease`——高亮 0.85、其余
+//!      1.0(resolveOpacity),淡行 opacity 补间还原
+//!   2. mask alpha `--bright/--dark-mask-alpha var(--mask-alpha-duration)
+//!      ease-out`(`@property` 注册的可过渡自定义属性)——激活 .2/.2→1/.4
+//!      (0.3s),退激活回落(0.45s);退激活时遮罩位置冻结(maskAnimator
+//!      .pause()),已唱部分随 alpha 平滑变暗而非瞬间消失,float 同步
+//!      反演回落(playbackRate=-1)
+//! - 逐词揭示:上游 mask-image 线性渐变 → 精灵像素渐变(patch),带内
+//!   逐像素线性插值、无阶梯近似;blur 是 Phase 2
+//! - 间奏:圆点行占位 spacer 已按上游参与布局;圆点演出为容器整体
+//!   `transform-origin: center` 的缩放呼吸/两段退场,缩放烘焙进 quad
+//!   几何(quad 图元不经过元素变换矩阵)
 //! - 初始入场:全部行 posY 起于 2×H(屏幕下方),以 slow 参数整块滑入(上游行为)
 
 use std::time::Instant;
@@ -64,6 +72,8 @@ const DOT_MARGIN_EM: f64 = 0.4;
 const DOT_PAD_EM: f64 = 0.8;
 /// 行 opacity:高亮 0.85,其余 1.0(上游 resolveOpacity)
 const LINE_OPACITY_HIGHLIGHTED: f64 = 0.85;
+/// wrapper opacity 的 CSS transition:`transition: opacity .4s`(默认 ease)
+const LINE_OPACITY_TRANSITION_SEC: f64 = 0.4;
 
 /// 歌词字体(App 实配:字体栈回退 Segoe UI,字重 600)
 fn lyric_font() -> gpui::Font {
@@ -74,12 +84,31 @@ fn lyric_font() -> gpui::Font {
     }
 }
 
-/// 文本 alpha 的 ease-out 过渡(上游 CSS 变量 transition)
+/// CSS 缓动关键字(补间曲线,精确 cubic-bezier 定义见 ease.rs)
+#[derive(Clone, Copy, PartialEq)]
+enum TweenEasing {
+    /// `ease-out`:cubic-bezier(0, 0, 0.58, 1)
+    EaseOut,
+    /// `ease`:cubic-bezier(0.25, 0.1, 0.25, 1)
+    Ease,
+}
+
+impl TweenEasing {
+    fn apply(self, t: f64) -> f64 {
+        match self {
+            Self::EaseOut => crate::ease::ease_out()(t),
+            Self::Ease => crate::ease::ease()(t),
+        }
+    }
+}
+
+/// CSS transition 的数值等价:起点采样、方向决定时长、精确缓动曲线
 struct AlphaTween {
     from: f64,
     to: f64,
     start: Instant,
     duration_sec: f64,
+    easing: TweenEasing,
 }
 
 impl AlphaTween {
@@ -89,21 +118,37 @@ impl AlphaTween {
             to: value,
             start: Instant::now(),
             duration_sec: 0.0,
+            easing: TweenEasing::EaseOut,
         }
     }
 
+    /// mask alpha 的过渡(上游 gradientMask 类切换):
+    /// 升 → --mask-alpha-duration .3s,降 → .45s(基类值),均 ease-out
     fn retarget(&mut self, to: f64, now: Instant) {
+        let from = self.sample(now);
+        let duration_sec = if to > from {
+            ALPHA_TO_ACTIVE_SEC
+        } else {
+            ALPHA_TO_DIM_SEC
+        };
+        self.retarget_eased(to, now, duration_sec, TweenEasing::EaseOut);
+    }
+
+    fn retarget_eased(
+        &mut self,
+        to: f64,
+        now: Instant,
+        duration_sec: f64,
+        easing: TweenEasing,
+    ) {
         if (self.to - to).abs() < 1e-3 {
             return;
         }
         self.from = self.sample(now);
         self.to = to;
         self.start = now;
-        self.duration_sec = if to > self.from {
-            ALPHA_TO_ACTIVE_SEC
-        } else {
-            ALPHA_TO_DIM_SEC
-        };
+        self.duration_sec = duration_sec;
+        self.easing = easing;
     }
 
     fn sample(&self, now: Instant) -> f64 {
@@ -111,9 +156,7 @@ impl AlphaTween {
             return self.to;
         }
         let t = (now.duration_since(self.start).as_secs_f64() / self.duration_sec).clamp(0.0, 1.0);
-        // CSS ease-out 的近似
-        let eased = 1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t);
-        self.from + (self.to - self.from) * eased
+        self.from + (self.to - self.from) * self.easing.apply(t)
     }
 
     fn animating(&self, now: Instant) -> bool {
@@ -144,6 +187,13 @@ pub struct LyricPage {
     scale: Vec<Spring>,
     alpha_bright: Vec<AlphaTween>,
     alpha_dark: Vec<AlphaTween>,
+    /// wrapper opacity 补间(上游 transition: opacity .4s ease)
+    line_opacity: Vec<AlphaTween>,
+    /// 各行的激活态(退激活沿判定的基准)
+    prev_active: Vec<bool>,
+    /// 退激活冻结态:遮罩推进与 float 起点冻结于退激活时刻
+    /// (上游 disable() 的 maskAnimator.pause + float 反演)
+    row_deactivate: Vec<Option<crate::words::FloatReverse>>,
     /// 各行的词元 span 布局(随字号重建)
     word_spans: Vec<Vec<crate::words::WordSpan>>,
     /// 入场(2H 滑入)是否完成
@@ -210,6 +260,9 @@ impl LyricPage {
             scale,
             alpha_bright: (0..count).map(|_| AlphaTween::new(MASK_ALPHA_SOLID)).collect(),
             alpha_dark: (0..count).map(|_| AlphaTween::new(MASK_ALPHA_SOLID)).collect(),
+            line_opacity: (0..count).map(|_| AlphaTween::new(1.0)).collect(),
+            prev_active: vec![false; count],
+            row_deactivate: vec![None; count],
             word_spans: (0..count).map(|_| Vec::new()).collect(),
             entered: false,
             layout_dirty: true,
@@ -268,28 +321,40 @@ impl LyricPage {
         });
     }
 
-    /// 构造间奏圆点行:wrapper(行透明度/点击层之下)+ ScaledElement
-    /// (呼吸缩放绕行中心)+ 三颗 canvas 圆点(quad 圆角=半径)
+    /// 间奏圆点行(上游 InterludeDotsEl):容器 transform-origin: center 的
+    /// 整体缩放呼吸/两段退场。圆点是 quad 图元、不经过元素变换矩阵,
+    /// 缩放直接烘焙进几何——绕容器盒中心缩放各点位置与半径,等价且精确。
     fn build_dots_element(
         &self,
-        row_opacity: f64,
+        opacity: f64,
         scale: f64,
         dot_opacities: [f64; 3],
     ) -> gpui_kit::AnyElement {
         let font = self.font_size;
-        let row_height = self.interlude_total_height();
-        let dot_size = font * crate::dots::DOT_SIZE_EM;
+        // 上游 .FmKaba_interludeDots:padding .4em 1em、
+        // height clamp(.5em, 1vh, 3em)(content-box,加上下 padding)
+        let box_h = self.dots_box_height();
+        let box_w = font
+            * (crate::dots::WORD_PAD_EM * 2.0
+                + crate::dots::DOT_SIZE_EM * 3.0
+                + crate::dots::DOT_GAP_EM * 2.0);
+        let top = self.dots_y.current_position();
+        let center_x = box_w / 2.0;
+        // 子元素坐标相对本 div(div 自身经 .top 定位),盒中心即元素中心
+        let center_y = box_h / 2.0;
+        let dot = font * crate::dots::DOT_SIZE_EM;
         let gap = font * crate::dots::DOT_GAP_EM;
-        let inset_x = font * crate::dots::WORD_PAD_EM;
-        // 圆点在行内容盒中垂直居中(内容盒 = 总高 − 2×margin)
-        let content_height = row_height - font * crate::dots::DOT_MARGIN_EM * 2.0;
-        let dot_top = font * crate::dots::DOT_MARGIN_EM + (content_height - dot_size) / 2.0;
-        // 行宽 = fit-content(上游 transform-origin: center 以此行为中心呼吸)
-        let row_width = inset_x * 2.0 + dot_size * 3.0 + gap * 2.0;
+        let inset = font * crate::dots::WORD_PAD_EM;
 
         let mut dots = Vec::with_capacity(3);
         for (index, alpha) in dot_opacities.iter().enumerate() {
-            let left = inset_x + index as f64 * (dot_size + gap);
+            // 未缩放中心:x = 左 padding + 半径 + i×(直径+间隙);y = 盒中心
+            let x = inset + dot / 2.0 + index as f64 * (dot + gap);
+            let cx = center_x + scale * (x - center_x);
+            let radius = scale * dot / 2.0;
+            let left = cx - radius;
+            let dot_top = center_y - radius;
+            let size = radius * 2.0;
             let alpha = *alpha;
             dots.push(
                 gpui::canvas(move |_, _, _| (), move |bounds, _, window, _| {
@@ -306,8 +371,8 @@ impl LyricPage {
                 .absolute()
                 .left(px(left as f32))
                 .top(px(dot_top as f32))
-                .w(px(dot_size as f32))
-                .h(px(dot_size as f32)),
+                .w(px(size as f32))
+                .h(px(size as f32)),
             );
         }
 
@@ -315,25 +380,24 @@ impl LyricPage {
             .id("interlude-dots")
             .absolute()
             .left(px(0.0))
-            .top(px(self.dots_y.current_position() as f32))
-            .w(px(self.container_width as f32))
-            .h(px(row_height as f32))
-            .opacity(row_opacity as f32)
-            .child(ScaledElement::new(
-                div().relative().w(px(row_width as f32)).h(px(row_height as f32)).children(dots),
-                scale as f32,
-                gpui::point(px(0.0), px(0.0)),
-                gpui::point(px((row_width / 2.0) as f32), px((row_height / 2.0) as f32)),
-            ))
+            .top(px(top as f32))
+            .w(px(box_w as f32))
+            .h(px(box_h as f32))
+            .opacity(opacity as f32)
+            .children(dots)
             .into_any_element()
+    }
+
+    /// 圆点元素盒高(上游 height: clamp(.5em, 1vh, 3em) + 上下 padding .8em)
+    fn dots_box_height(&self) -> f64 {
+        let font = self.font_size;
+        let vh = self.container_height / 100.0;
+        (font * 0.5).max(vh).min(font * 3.0) + font * DOT_PAD_EM
     }
 
     /// 间奏圆点行总高(上游 totalInterludeHeight = 圆点元素高 + 2×0.4em margin)
     fn interlude_total_height(&self) -> f64 {
-        let font = self.font_size;
-        let vh = self.container_height / 100.0;
-        let dots = (font * 0.5).max(vh).min(font * 3.0) + font * DOT_PAD_EM;
-        dots + font * DOT_MARGIN_EM * 2.0
+        self.dots_box_height() + self.font_size * DOT_MARGIN_EM * 2.0
     }
 
     /// posY 弹簧参数(上游 getPosYSpringPolicy):
@@ -439,7 +503,8 @@ impl LyricPage {
             }
         }
 
-        // scale 与文本 alpha 目标(上游 setLineTransformations,每次排版全量设置)
+        // scale、文本 alpha 与行 opacity 目标(上游 setLineTransformations +
+        // resolveOpacity,每次排版全量设置;过渡在补间中还原 CSS transition)
         let highlighted: &[usize] = self.timeline.highlighted();
         let latest = self.timeline.latest_highlighted().unwrap_or(scroll_to);
         let now = Instant::now();
@@ -452,6 +517,17 @@ impl LyricPage {
                 SCALE_ASPECT
             };
             self.scale[index].set_target_position(scale_target, 0.0);
+            // wrapper opacity:高亮 0.85、其余 1.0,0.4s ease 过渡
+            self.line_opacity[index].retarget_eased(
+                if highlighted.contains(&index) {
+                    LINE_OPACITY_HIGHLIGHTED
+                } else {
+                    1.0
+                },
+                now,
+                LINE_OPACITY_TRANSITION_SEC,
+                TweenEasing::Ease,
+            );
             let (bright, dark) = if active {
                 (MASK_ALPHA_BRIGHT, MASK_ALPHA_DARK)
             } else {
@@ -459,6 +535,16 @@ impl LyricPage {
             };
             self.alpha_bright[index].retarget(bright, now);
             self.alpha_dark[index].retarget(dark, now);
+            // 退激活:冻结遮罩推进与 float 起点;重新激活则清反演回原点
+            if active {
+                self.row_deactivate[index] = None;
+            } else if self.prev_active[index] {
+                self.row_deactivate[index] = Some(crate::words::FloatReverse {
+                    elapsed_ms: 0.0,
+                    media_at_disable_ms: media_ms,
+                });
+            }
+            self.prev_active[index] = active;
         }
 
         // 间奏圆点行:posY 弹簧到 interludeY + dotMargin(上游 setTransform)
@@ -516,6 +602,8 @@ impl LyricPage {
             || self.scale.iter().any(|spring| !spring.arrived())
             || self.alpha_bright.iter().any(|tween| tween.animating(now))
             || self.alpha_dark.iter().any(|tween| tween.animating(now))
+            || self.line_opacity.iter().any(|tween| tween.animating(now))
+            || self.row_deactivate.iter().any(|state| state.is_some())
             || !self.dots_y.arrived()
             || self.trace.is_some()
     }
@@ -650,13 +738,18 @@ impl Render for LyricPage {
             self.layout_dirty = false;
         }
 
-        // 5) 弹簧与 alpha 推进
+        // 5) 弹簧与补间推进(float 反演按帧增量累加墙钟,不渲染即暂停)
         for spring in &mut self.pos_y {
             spring.update(delta);
         }
         self.dots_y.update(delta);
         for spring in &mut self.scale {
             spring.update(delta);
+        }
+        for state in &mut self.row_deactivate {
+            if let Some(reverse) = state.as_mut() {
+                reverse.elapsed_ms += delta * 1000.0;
+            }
         }
 
         if self.animating(now) {
@@ -693,13 +786,7 @@ impl Render for LyricPage {
                 .collect();
             let hl: Vec<usize> = highlighted.to_vec();
             let ops: Vec<f64> = (0..count)
-                .map(|index| {
-                    if highlighted.contains(&index) {
-                        LINE_OPACITY_HIGHLIGHTED
-                    } else {
-                        1.0
-                    }
-                })
+                .map(|index| self.line_opacity[index].sample(now))
                 .collect();
             let motion_buffer = self.container_height * MOTION_BUFFER_RATIO;
             let line_h = self.font_size * LINE_TOTAL_EM;
@@ -794,7 +881,6 @@ impl Render for LyricPage {
         let motion_buffer = self.container_height * MOTION_BUFFER_RATIO;
         let top_bound = -(OVERSCAN_PX + motion_buffer);
         let bottom_bound = self.container_height + OVERSCAN_PX + motion_buffer;
-        let highlighted: &[usize] = self.timeline.highlighted();
 
         let mut children: Vec<gpui_kit::AnyElement> = Vec::new();
         // 点击映射表:各行的可视纵带与其起始时间(行本体不再承载事件)
@@ -809,30 +895,35 @@ impl Render for LyricPage {
                 continue;
             }
             let scale = self.scale[index].current_position() / 100.0;
-            let line_opacity = if highlighted.contains(&index) {
-                LINE_OPACITY_HIGHLIGHTED
-            } else {
-                1.0
-            };
             click_bands.push((y, y + line_total, line.start_time_ms));
 
-            // 逐词揭示元素(未激活行为 solid 单色;激活行按词元时间线揭示)
-            let active = highlighted.contains(&index)
-                || (index >= self.timeline.scroll_to_index()
-                    && index
-                        < self
-                            .timeline
-                            .latest_highlighted()
-                            .unwrap_or_else(|| self.timeline.scroll_to_index()));
+            // 退激活收尾:alpha 补间收敛且 float 反演完成后清除冻结态
+            let deactivate_settled = match self.row_deactivate[index].as_ref() {
+                None => true,
+                Some(reverse) => {
+                    !self.alpha_bright[index].animating(now)
+                        && !self.alpha_dark[index].animating(now)
+                        && crate::words::float_reverse_finished(&self.word_spans[index], reverse)
+                }
+            };
+            if deactivate_settled {
+                self.row_deactivate[index] = None;
+            }
+            let deactivate = self.row_deactivate[index];
+
+            // 逐词揭示元素:亮暗 alpha 与行 opacity 都经补间传入——
+            // 激活/退激活的亮度过渡、退激活的遮罩冻结与 float 反演
+            // 全部在此闭合(元素按 alpha 是否相异自选渐变/单色路径)
             let word_element = crate::words::WordLineElement::new(
                 self.word_spans[index].clone(),
                 lyric_font(),
                 font,
                 line_box,
-                active,
                 self.alpha_bright[index].sample(now),
                 self.alpha_dark[index].sample(now),
                 self.position_ms,
+                deactivate.map(|reverse| reverse.media_at_disable_ms),
+                deactivate,
             );
             // 静态文字层:位置恒为 (内缩 1em, 上留白 0.4em)
             let text_element = div()
@@ -850,7 +941,7 @@ impl Render for LyricPage {
                     .top(px(0.0))
                     .w(px(self.container_width as f32))
                     .h(px(line_total as f32))
-                    .opacity(line_opacity as f32)
+                    .opacity(self.line_opacity[index].sample(now) as f32)
                     .child(ScaledElement::new(
                         text_element,
                         scale as f32,

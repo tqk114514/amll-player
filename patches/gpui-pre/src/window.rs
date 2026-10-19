@@ -17,7 +17,7 @@ use crate::{
     PolychromeSprite, Priority, PromptButton, PromptLevel, Quad, Render, RenderGlyphParams,
     RenderImage, RenderImageParams, RenderSvgParams, Replay, ResizeEdge, SMOOTH_SVG_SCALE_FACTOR,
     SUBPIXEL_VARIANTS_X, SUBPIXEL_VARIANTS_Y, ScaledPixels, Scene, Shadow, SharedString, Size,
-    StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SystemWindowTab,
+    StrikethroughStyle, Style, SubpixelSprite, SubscriberSet, Subscription, SpriteGradient, SystemWindowTab,
     SystemWindowTabController, TabStopMap, TaffyLayoutEngine, Task, TextInputConfiguration,
     TextInputStateChange, TextRenderingMode, TextStyle, TextStyleRefinement, ThermalState,
     TransformationMatrix, Underline, UnderlineStyle, WindowAppearance, WindowBackgroundAppearance,
@@ -1241,6 +1241,8 @@ pub struct Window {
     pub(crate) element_opacity: f32,
     /// [AMLL patch] 当前元素变换栈(与 element_opacity 同构的绘制期作用域)
     pub(crate) element_transformation: TransformationMatrix,
+    /// [AMLL patch] 当前元素遮罩渐变栈(绘制期作用域,内层覆盖外层)
+    pub(crate) element_mask_gradient_stack: Vec<SpriteGradient>,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
     /// The [`TextInputConfiguration`] most recently forwarded to the platform
@@ -2147,6 +2149,7 @@ impl Window {
             content_mask_stack: Vec::new(),
             element_opacity: 1.0,
             element_transformation: TransformationMatrix::unit(),
+            element_mask_gradient_stack: Vec::new(),
             requested_autoscroll: None,
             last_text_input_configuration: None,
             focused_text_input_active: false,
@@ -4252,6 +4255,46 @@ impl Window {
         self.element_transformation
     }
 
+    /// [AMLL patch] 在水平 alpha 渐变遮罩作用域内绘制:作用域内绘制的
+    /// 单色/次像素字形精灵携带该渐变,由平台渲染器在像素着色器中逐像素
+    /// 应用——CSS `mask-image: linear-gradient(to right, A …, B …)` 的
+    /// 等价物(Web 合成器对内容的按像素 alpha 遮罩)。
+    ///
+    /// `x_start`/`x_end` 是渐变带左右缘,元素坐标(逻辑像素,内部换算
+    /// 设备像素,与精灵 bounds 同空间且不受变换影响——遮罩定义在局部
+    /// 空间,与 CSS mask 在 transform 下的语义一致):带左及其以左为
+    /// `alpha_left`,带右及其以右为 `alpha_right`,带内线性插值。
+    /// 嵌套作用域以内层为准(与 CSS 遮罩叠加语义不同,当前无此需求)。
+    pub fn with_element_mask_gradient<R>(
+        &mut self,
+        x_start: Pixels,
+        x_end: Pixels,
+        alpha_left: f32,
+        alpha_right: f32,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint_or_prepaint();
+
+        let scale_factor = self.scale_factor();
+        self.element_mask_gradient_stack.push(SpriteGradient {
+            x_start: (x_start * scale_factor).0,
+            x_end: (x_end * scale_factor).0,
+            alpha_left,
+            alpha_right,
+        });
+        let result = f(self);
+        self.element_mask_gradient_stack.pop();
+        result
+    }
+
+    /// [AMLL patch] 当前生效的遮罩渐变(无作用域时为 IDENTITY 空操作)
+    pub fn element_mask_gradient(&self) -> SpriteGradient {
+        self.element_mask_gradient_stack
+            .last()
+            .copied()
+            .unwrap_or(SpriteGradient::IDENTITY)
+    }
+
     /// [AMLL patch] 像素级追踪:读回最近呈现的一帧(无平台实现时为 None)
     pub fn capture_frame_pixels(&mut self) -> Option<image::RgbaImage> {
         self.platform_window.capture_frame_pixels()
@@ -4910,6 +4953,7 @@ impl Window {
                     color: color.opacity(element_opacity),
                     tile,
                     transformation: self.element_transformation(),
+                    gradient: self.element_mask_gradient(),
                 });
             } else {
                 self.next_frame.scene.insert_primitive(MonochromeSprite {
@@ -4920,6 +4964,7 @@ impl Window {
                     color: color.opacity(element_opacity),
                     tile,
                     transformation: self.element_transformation(),
+                    gradient: self.element_mask_gradient(),
                 });
             }
         }
@@ -5067,6 +5112,7 @@ impl Window {
             color: color.opacity(element_opacity),
             tile,
             transformation,
+            gradient: self.element_mask_gradient(),
         });
 
         Ok(())

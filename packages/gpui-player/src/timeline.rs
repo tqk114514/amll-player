@@ -773,3 +773,35 @@ mod tests {
         assert_eq!(lines[0].end_time_ms, 15000.0);
     }
 }
+
+#[cfg(test)]
+mod interlude_boundary {
+    use super::*;
+
+    /// 间奏边界与优化管线的耦合不变量:前奏间奏的 end 必须等于优化后的
+    /// 首行开始时间(上游 tryAdvanceStartTime 对首行提前 600ms),圆点
+    /// 退场(totalEnd)才能与高亮切换在同一时刻无缝交接
+    #[test]
+    fn prelude_interlude_ends_at_optimized_first_line_start() {
+        let lines = vec![LyricLine {
+            start_time_ms: 9000.0,
+            end_time_ms: 13200.0,
+            words: vec![LyricWord {
+                start_time_ms: 9000.0,
+                end_time_ms: 13200.0,
+                text: "前".into(),
+            }],
+        }];
+        let mut t = Timeline::new(lines);
+        assert_eq!(t.lines[0].start_time_ms, 8400.0, "首行按上游提前 600ms");
+        t.sync(0.0, false);
+        let interlude = t.active_interlude().expect("前奏间奏激活");
+        assert_eq!(interlude.anchor, -1);
+        assert_eq!(interlude.end_ms, 8400.0, "间奏 end = 优化后首行开始");
+        assert_eq!(t.interlude_entry_ms(), 0.0);
+        // 间奏结束 = 新行开始:高亮与圆点退场同帧交接
+        t.sync(8420.0, false);
+        assert_eq!(t.highlighted, vec![0]);
+        assert!(t.active_interlude().is_none());
+    }
+}
