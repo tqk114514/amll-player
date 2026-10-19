@@ -313,3 +313,17 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod quad_size_check {
+    /// 补丁不变量:Quad 追加变换矩阵后为 184 字节——精灵/quad 结构体经
+    /// 原始拷贝进入 StructuredBuffer,Rust 与 HLSL 两侧布局必须逐字节
+    /// 一致(HLSL 侧 float2x2@160 + float2@176 = 184),此值变更须同步
+    /// shaders.hlsl 的 Quad 结构
+    #[test]
+    fn quad_struct_size() {
+        assert_eq!(std::mem::size_of::<gpui::Quad>(), 184);
+        assert_eq!(std::mem::size_of::<gpui::TransformationMatrix>(), 24);
+        assert_eq!(std::mem::size_of::<gpui::MonochromeSprite>(), 128);
+    }
+}

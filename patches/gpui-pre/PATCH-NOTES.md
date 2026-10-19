@@ -56,6 +56,21 @@ bright …, dark …)`:合成器把文字内容逐像素乘以渐变遮罩 alpha
 精灵携带渐变、像素着色器逐像素插值后与 Web 渲染逐像素等价,顺带把
 每词 20+ 次遮罩重绘降为单次绘制。
 
+## 变更点(三):quad 携带元素变换
+
+`src/scene.rs` + `src/window.rs`(带 `[AMLL patch]` 注释):
+
+1. `scene.rs` 的 `Quad` 追加 `transformation: TransformationMatrix` 字段
+   (追加于 160 字节偏移,总尺寸 184 = 160 + float2x2(16) + float2(8),
+   与平台 HLSL 布局逐字节一致;gpui-player 侧有尺寸守卫测试)。
+2. `paint_quad` 读取 `element_transformation()`:单位矩阵路径保持原
+   `snap_bounds`/`snap_border_widths` 像素吸附不变;变换作用域内不吸附
+   (仅换算设备像素),亚像素精度经矩阵在顶点阶段应用。
+
+背景:quad 的 `snap_bounds` 会把几何吸附到设备像素,慢速缩放动画
+(如间奏圆点呼吸,≈0.24px/帧)表现为周期性 1px 跳变的微动;文字精灵
+走矩阵无此问题。SDF 在局部空间求值,带内 AA 随缩放等比展宽。
+
 ## 已知边界
 
 - `paint_emoji` 走 `PolychromeSprite`(全彩图元,无变换字段),

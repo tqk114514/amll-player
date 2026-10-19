@@ -4758,8 +4758,32 @@ impl Window {
         self.invalidator.debug_assert_paint();
 
         let opacity = self.element_opacity();
-        let snapped_bounds = self.snap_bounds(quad.bounds);
-        let snapped_border_widths = self.snap_border_widths(quad.border_widths);
+        // [AMLL patch] 变换作用域内的 quad 不做像素吸附——亚像素精度
+        // 经顶点矩阵应用(与文字精灵同源),SDF 在局部空间求值;
+        // 单位矩阵路径保持原吸附行为不变
+        let transformation = self.element_transformation();
+        let transformed = transformation != TransformationMatrix::unit();
+        let snapped_bounds = if transformed {
+            // 不吸附,仅换算设备像素(亚像素精度经顶点矩阵应用)
+            let scale_factor = self.scale_factor();
+            Bounds::from_corners(
+                point(
+                    ScaledPixels(quad.bounds.left().0 * scale_factor),
+                    ScaledPixels(quad.bounds.top().0 * scale_factor),
+                ),
+                point(
+                    ScaledPixels(quad.bounds.right().0 * scale_factor),
+                    ScaledPixels(quad.bounds.bottom().0 * scale_factor),
+                ),
+            )
+        } else {
+            self.snap_bounds(quad.bounds)
+        };
+        let snapped_border_widths = if transformed {
+            quad.border_widths.map(|edge| ScaledPixels(edge.0 * self.scale_factor()))
+        } else {
+            self.snap_border_widths(quad.border_widths)
+        };
         let quad = Quad {
             order: 0,
             bounds: snapped_bounds,
@@ -4769,6 +4793,7 @@ impl Window {
             corner_radii: quad.corner_radii.scale(self.scale_factor()),
             border_widths: snapped_border_widths,
             border_style: quad.border_style,
+            transformation,
         };
 
         if !quad.background.is_transparent() {

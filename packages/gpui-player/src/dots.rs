@@ -7,6 +7,12 @@
 //!
 //! 上游用 CSS `mask` 相关演出与 DOM transform;此处输出纯数值快照,
 //! 渲染由调用方(lyric_page)完成。
+//!
+//! 圆点的渲染(DotsElement):三颗 SDF 几何圆(quad 圆角=半径,等价
+//! 上游 span + border-radius: 50%),呼吸/退场的缩放与 posY 弹簧全部
+//! 经绘制期矩阵应用——本地 patch 让 quad 携带变换矩阵(顶点变换 +
+//! 像素着色器逆矩阵回局部空间求 SDF),变换作用域内不做像素吸附,
+//! 慢速呼吸(≈0.24px/帧)不再出现 1px 级跳变的微动。
 
 /// 退场总时长(EXIT_PHASE1 + EXIT_PHASE2)
 const EXIT_TOTAL_MS: f64 = 1000.0;
@@ -332,5 +338,139 @@ mod tests {
         assert!(a < 0.9 && a > 0.0);
         let done = dismiss_opacity(2000.0, 900.0, 0.9);
         assert!(done.abs() < 1e-6, "150ms 后完全消失");
+    }
+}
+
+
+/// 间奏圆点元素:三颗 SDF 几何圆 + 绘制期矩阵。
+///
+/// 矩阵语义 p' = C + s·(p − C_local):C 为实际群中心(含 posY 弹簧、
+/// 呼吸缩放的中心),C_local 为窗口内固定的局部群中心——未变换的
+/// quad 恒落在内容遮罩内(局部裁剪可过),每帧只有矩阵变化,
+/// 几何恒定、亚像素运动经顶点矩阵平滑。
+pub struct DotsElement {
+    /// 未缩放圆心,相对局部群中心(常量;y 即群中心高度)
+    local_centers: [(f64, f64); 3],
+    /// 圆点直径(逻辑像素,未缩放;上游 .3em)
+    dot_diameter: f64,
+    /// 局部群中心(窗口坐标,常量)
+    local_group_center: (f64, f64),
+    /// 实际群中心(逻辑像素,窗口坐标;含 posY 弹簧)
+    group_center: (f64, f64),
+    /// 容器缩放(呼吸/退场)
+    scale: f64,
+    /// 容器透明度(含 dismiss 衰减)
+    opacity: f64,
+    /// 三颗圆点各自透明度
+    dot_opacities: [f64; 3],
+}
+
+impl DotsElement {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        local_centers: [(f64, f64); 3],
+        dot_diameter: f64,
+        local_group_center: (f64, f64),
+        group_center: (f64, f64),
+        scale: f64,
+        opacity: f64,
+        dot_opacities: [f64; 3],
+    ) -> Self {
+        Self {
+            local_centers,
+            dot_diameter,
+            local_group_center,
+            group_center,
+            scale,
+            opacity,
+            dot_opacities,
+        }
+    }
+}
+
+impl gpui::Element for DotsElement {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<gpui::ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&gpui::GlobalElementId>,
+        _inspector_id: Option<&gpui::InspectorElementId>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> (gpui::LayoutId, Self::RequestLayoutState) {
+        // 仅作绘制载体:几何全部经矩阵应用,元素自身占位 0×0
+        (window.request_layout(gpui::Style::default(), [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&gpui::GlobalElementId>,
+        _inspector_id: Option<&gpui::InspectorElementId>,
+        _bounds: gpui::Bounds<gpui::Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _window: &mut gpui::Window,
+        _cx: &mut gpui::App,
+    ) -> Self::PrepaintState {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&gpui::GlobalElementId>,
+        _inspector_id: Option<&gpui::InspectorElementId>,
+        _bounds: gpui::Bounds<gpui::Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _prepaint: &mut Self::PrepaintState,
+        window: &mut gpui::Window,
+        _cx: &mut gpui::App,
+    ) {
+        let scale_factor = window.scale_factor() as f64;
+        let s = self.scale as f32;
+        let local_x = (self.local_group_center.0 * scale_factor) as f32;
+        let local_y = (self.local_group_center.1 * scale_factor) as f32;
+        let center_x = (self.group_center.0 * scale_factor) as f32;
+        let center_y = (self.group_center.1 * scale_factor) as f32;
+        let matrix = gpui::TransformationMatrix {
+            rotation_scale: [[s, 0.0], [0.0, s]],
+            translation: [center_x - s * local_x, center_y - s * local_y],
+        };
+        let radius = gpui::px((self.dot_diameter / 2.0) as f32);
+        window.with_element_transformation(matrix, |window| {
+            for (index, alpha) in self.dot_opacities.iter().enumerate() {
+                let (dx, dy) = self.local_centers[index];
+                let bounds = gpui::Bounds {
+                    origin: gpui::point(
+                        gpui::px((self.local_group_center.0 + dx) as f32) - radius,
+                        gpui::px((self.local_group_center.1 + dy) as f32) - radius,
+                    ),
+                    size: gpui::size(radius * 2.0, radius * 2.0),
+                };
+                let alpha = (self.opacity * alpha) as f32;
+                window.paint_quad(gpui::quad(
+                    bounds,
+                    gpui::Corners::all(radius),
+                    gpui::hsla(0.0, 0.0, 1.0, alpha),
+                    gpui::Edges::default(),
+                    gpui::transparent_black(),
+                    gpui::BorderStyle::default(),
+                ));
+            }
+        });
+    }
+}
+
+impl gpui::IntoElement for DotsElement {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
     }
 }

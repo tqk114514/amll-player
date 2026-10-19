@@ -507,6 +507,9 @@ struct Quad {
     Hsla border_color;
     Corners corner_radii;
     Edges border_widths;
+    // [AMLL patch] 元素变换(与文字精灵同源):追加于 160 字节偏移
+    // (float2x2 需 8 字节对齐,此处满足),总尺寸 184 与 Rust 侧逐字节一致
+    TransformationMatrix transformation;
 };
 
 struct QuadVertexOutput {
@@ -530,11 +533,30 @@ struct QuadFragmentInput {
 
 StructuredBuffer<Quad> quads: register(t1);
 
+// [AMLL patch] 设备像素经逆矩阵映射回局部空间。与
+// to_device_position_transformed 的 mul(position, RS) + T(行向量约定)
+// 成对:X' = a·x + c·y,Y' = b·x + d·y,逆变换
+// x = (d·X − c·Y)/det,y = (a·Y − b·X)/det。单位矩阵时与
+// input.position.xy 逐位一致(保持原路径行为不变)
+float2 quad_local_point(float2 device_point, TransformationMatrix t) {
+    float a = t.rotation_scale[0][0];
+    float b = t.rotation_scale[0][1];
+    float c = t.rotation_scale[1][0];
+    float d = t.rotation_scale[1][1];
+    float det = a * d - b * c;
+    float inv = (abs(det) < 1e-9) ? 0.0 : 1.0 / det;
+    float2 q = device_point - t.translation;
+    return float2((q.x * d - q.y * c) * inv, (q.y * a - q.x * b) * inv);
+}
+
 QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     uint quad_id = batch_start_index + instance_id;
     Quad quad = quads[quad_id];
-    float4 device_position = to_device_position(unit_vertex, quad.bounds);
+    // [AMLL patch] 变换的 quad:顶点经矩阵到设备空间;content_mask 与
+    // bounds 同处局部空间,裁剪测试须在局部做(与文字精灵裁剪修复同语义)
+    float4 device_position =
+        to_device_position_transformed(unit_vertex, quad.bounds, quad.transformation);
 
     GradientColor gradient = prepare_gradient_color(
         quad.background.tag,
@@ -558,7 +580,10 @@ QuadVertexOutput quad_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_I
 
 float4 quad_fragment(QuadFragmentInput input): SV_Target {
     Quad quad = quads[input.quad_id];
-    float4 background_color = gradient_color(quad.background, input.position.xy, quad.bounds,
+    // [AMLL patch] SDF/渐变在局部空间求值:像素位置先经逆矩阵映射,
+    // 带内 AA 随缩放等比展宽(与浏览器光栅几何圆的缩放观感一致)
+    float2 local_point = quad_local_point(input.position.xy, quad.transformation);
+    float4 background_color = gradient_color(quad.background, local_point, quad.bounds,
     input.background_solid, input.background_color0, input.background_color1);
 
     bool unrounded = quad.corner_radii.top_left == 0.0 &&
@@ -577,7 +602,7 @@ float4 quad_fragment(QuadFragmentInput input): SV_Target {
 
     float2 size = quad.bounds.size;
     float2 half_size = size / 2.;
-    float2 the_point = input.position.xy - quad.bounds.origin;
+    float2 the_point = local_point - quad.bounds.origin;
     float2 center_to_point = the_point - half_size;
 
     // Signed distance field threshold for inclusion of pixels. 0.5 is the

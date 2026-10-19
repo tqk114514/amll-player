@@ -541,6 +541,10 @@ pub struct Quad {
     pub border_color: Hsla,
     pub corner_radii: Corners<ScaledPixels>,
     pub border_widths: Edges<ScaledPixels>,
+    /// [AMLL patch] 元素变换(与文字精灵同源):顶点经此矩阵到设备
+    /// 空间,像素着色器用逆矩阵把像素位置映射回局部空间求 SDF。
+    /// 追加于 160 字节偏移,总尺寸 184 与 HLSL 侧逐字节一致
+    pub transformation: TransformationMatrix,
 }
 
 impl From<Quad> for Primitive {

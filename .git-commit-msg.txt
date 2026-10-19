@@ -1,17 +1,20 @@
-feat(gpui): 揭示改像素级线性渐变遮罩;行亮度双过渡忠实还原;圆点整体缩放修复
+fix(gpui): 圆点微动与退激活上顿两处修复;quad 携带元素变换
 
-- patch gpui-pre / gpui-pre-windows:MonochromeSprite/SubpixelSprite 携带
-  SpriteGradient(水平 alpha 渐变),顶点插值 local_x、像素着色器逐点线性
-  乘入——CSS mask-image linear-gradient 的合成器等价,替代内容裁剪切片
-  逼近,带状伪影从机制上消失,每词绘制从 20+ 次降为单次
-- 行激活/退激活亮度:上游为两条 CSS transition 叠加——mask alpha
-  .2/.2↔1/.4(0.3s/0.45s ease-out,@property 可过渡自定义属性)+ wrapper
-  opacity 0.85↔1.0(0.4s ease);退激活冻结遮罩推进(maskAnimator.pause)
-  且 float 反演回落(playbackRate=-1),已唱部分平滑变暗而非瞬间消失
-- 间奏圆点:Quad 图元不经元素变换矩阵,缩放烘焙进几何(绕容器盒中心);
-  修复子元素 top 双重偏移(圆点此前整体掉到下一行位置)
-- 高亮残留(唱完无新行接续保持高亮)与间奏边界=优化后首行开始均为
-  上游语义,新增回归测试锚定;float 反演/像素渐变剖面补单测
-- scripts/upstream-src:从 core@0.6.0 sourcemap 还原原始 TS 源作对照基准
-- 冒烟验证:渐变剖面 266-285 列严格单调(216→93 无台阶);圆点呼吸周期
-  逐帧吻合、退场恰在布局切换帧结束;激活补间 300ms、退激活 450ms 走满
+- 圆点微动:根因是 paint_quad 的 snap_bounds 把几何吸附到设备像素,
+  慢速呼吸(≈0.24px/帧)表现为周期性 1px 跳变。升级为 quad 携带
+  变换矩阵(用户拍板;zed 新版上游的 quad 亦无此能力,系自行设计):
+  顶点经 to_device_position_transformed 到设备空间,像素着色器以
+  逆矩阵(行向量约定与正向变换成对)把像素位置映射回局部空间求
+  SDF 与渐变——单位矩阵路径逐位保持原行为;变换作用域内不吸附,
+  亚像素精度经顶点矩阵应用。Quad 追加字段于 160 字节偏移(总 184,
+  Rust/HLSL 逐字节一致,尺寸守卫测试锚定)。圆点回归 SDF 几何圆
+  (quad 圆角=半径,等价上游 span + border-radius: 50%),三颗圆点
+  几何恒定,呼吸/退场缩放与 posY 弹簧全部经矩阵
+- 退激活上顿:退激活状态收敛后被整个清除,float 从反演回落瞬跳回
+  媒体时间推导的全浮起位置(词已唱完 → t=1),表现为亮度暗下去后
+  轻微上弹。上游语义是动画播完 fill: both 保持落回——新增 Sunk
+  阶段(Active/Reversing/Sunk 状态机),反演完成后保持 0 直到
+  重新激活(enable 重设动画时钟)
+- 冒烟验证:253 帧全程渲染(quad 管线改动零回归);圆点呼吸
+  46→55→46 与 7400ms 理论周期吻合、退场蓄力峰值 1.25× 精确复现;
+  退激活补间 13642→14122 完整走满 450ms 平滑收敛;37 测试全绿

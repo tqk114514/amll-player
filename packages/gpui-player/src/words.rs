@@ -61,6 +61,17 @@ pub struct FloatReverse {
     pub media_at_disable_ms: f64,
 }
 
+/// 上浮的阶段状态(上游 enable/disable 生命周期):
+/// - Active:激活,随媒体时间正向推进
+/// - Reversing:退激活反演中,按墙钟从冻结值匀速回落
+/// - Sunk:反演完成保持落回(上游动画播完 fill: both),直到重新激活
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FloatPhase {
+    Active,
+    Reversing(FloatReverse),
+    Sunk,
+}
+
 fn is_cjk_char(ch: char) -> bool {
     // 上游 /^[\p{Unified_Ideograph}\u0800-\u9FFC]+$/ 的实用近似
     matches!(ch as u32, 0x0800..=0x9ffc)
@@ -210,26 +221,24 @@ pub fn reveal_edge(spans: &[WordSpan], index: usize, media_ms: f64, fade: f64, p
 }
 
 /// 单个词元的上浮进度(0..1,未经缓动):激活期随媒体时间推进;
-/// 退激活后从冻结值按墙钟匀速反演回 0(反向播放时长 = 已推进时长)
-pub fn float_progress(
-    span: &WordSpan,
-    media_ms: f64,
-    reverse: Option<&FloatReverse>,
-) -> f64 {
+/// 退激活后从冻结值按墙钟匀速反演回 0(反向播放时长 = 已推进时长);
+/// 反演完成后保持 0(上游 fill: both),直到重新激活
+pub fn float_progress(span: &WordSpan, media_ms: f64, phase: FloatPhase) -> f64 {
     let duration = (span.end_ms - span.start_ms).max(FLOAT_MIN_MS);
-    match reverse {
-        None => ((media_ms - span.start_ms) / duration).clamp(0.0, 1.0),
-        Some(reverse) => {
+    match phase {
+        FloatPhase::Active => ((media_ms - span.start_ms) / duration).clamp(0.0, 1.0),
+        FloatPhase::Reversing(reverse) => {
             let t0 = ((reverse.media_at_disable_ms - span.start_ms) / duration).clamp(0.0, 1.0);
             (t0 - reverse.elapsed_ms / duration).clamp(0.0, t0)
         }
+        FloatPhase::Sunk => 0.0,
     }
 }
 
 /// 退激活反演是否全部结束(所有词元的上浮都回到 0)
 pub fn float_reverse_finished(spans: &[WordSpan], reverse: &FloatReverse) -> bool {
     spans.iter().all(|span| {
-        float_progress(span, f64::INFINITY, Some(reverse)) <= 0.0
+        float_progress(span, f64::INFINITY, FloatPhase::Reversing(*reverse)) <= 0.0
     })
 }
 
@@ -249,8 +258,8 @@ pub struct WordLineElement {
     /// 退激活期间冻结的媒体时间(上游 maskAnimator.pause():遮罩位置
     /// 停在退激活瞬间,已唱部分随 alpha 回落平滑变暗)
     frozen_media_ms: Option<f64>,
-    /// 退激活后的上浮反演(为 None 时随媒体时间正向推进)
-    float_reverse: Option<FloatReverse>,
+    /// 上浮阶段(激活随媒体推进 / 退激活反演 / 反演完成保持落回)
+    float_phase: FloatPhase,
     fade: f64,
     pad: f64,
 }
@@ -266,7 +275,7 @@ impl WordLineElement {
         dark: f64,
         media_ms: f64,
         frozen_media_ms: Option<f64>,
-        float_reverse: Option<FloatReverse>,
+        float_phase: FloatPhase,
     ) -> Self {
         Self {
             spans,
@@ -277,7 +286,7 @@ impl WordLineElement {
             dark,
             media_ms,
             frozen_media_ms,
-            float_reverse,
+            float_phase,
             fade: font_size * FADE_EM,
             pad: font_size * WORD_PAD_EM,
         }
@@ -382,7 +391,7 @@ impl Element for WordLineElement {
             // 退激活按墙钟反演回落)。经绘制期矩阵平移(顶点着色器
             // 精度)而非平移原点——字形原点按整像素吸附,直接平移会让
             // 1.75px 的上浮变成一两次 1px 瞬移
-            let float_t = float_progress(span, self.media_ms, self.float_reverse.as_ref());
+            let float_t = float_progress(span, self.media_ms, self.float_phase);
             let float_offset = -self.font_size * FLOAT_EM * crate::ease::ease_out()(float_t);
             let float_matrix = gpui::TransformationMatrix {
                 rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
@@ -529,19 +538,20 @@ mod tests {
     }
 
     #[test]
-    fn float_progress_advances_with_media_and_reverses_on_disable() {
+    fn float_progress_advances_reverses_and_holds_sunk() {
         let s = span("词", 1000.0, 2000.0, 0.0, 40.0);
-        // 未开始:0;结束后:1
-        assert!(float_progress(&s, 500.0, None) <= 0.0);
-        assert!((float_progress(&s, 3000.0, None) - 1.0).abs() < 1e-9);
-        // 中点:0.5(时长 1000 ≥ 最短 1000)
-        assert!((float_progress(&s, 1500.0, None) - 0.5).abs() < 1e-9);
-        // 退激活:冻结在半程,反演以 1× 回退(currentTime 递减)——
+        // 激活:未开始 0;中点 0.5;结束后 1
+        assert!(float_progress(&s, 500.0, FloatPhase::Active) <= 0.0);
+        assert!((float_progress(&s, 1500.0, FloatPhase::Active) - 0.5).abs() < 1e-9);
+        assert!((float_progress(&s, 3000.0, FloatPhase::Active) - 1.0).abs() < 1e-9);
+        // 退激活:冻结在半程,墙钟以 1× 回退(currentTime 递减)——
         // t0=0.5×1000ms 后归零,走 250ms 时剩 0.25
         let reverse = FloatReverse { elapsed_ms: 0.0, media_at_disable_ms: 1500.0 };
-        assert!((float_progress(&s, f64::INFINITY, Some(&reverse)) - 0.5).abs() < 1e-9);
+        assert!((float_progress(&s, f64::INFINITY, FloatPhase::Reversing(reverse)) - 0.5).abs() < 1e-9);
         let quarter = FloatReverse { elapsed_ms: 250.0, media_at_disable_ms: 1500.0 };
-        assert!((float_progress(&s, f64::INFINITY, Some(&quarter)) - 0.25).abs() < 1e-9);
+        assert!((float_progress(&s, f64::INFINITY, FloatPhase::Reversing(quarter)) - 0.25).abs() < 1e-9);
+        // 反演回落后保持 0(Sunk),不回跳到媒体时间推导的全浮起
+        assert!(float_progress(&s, 99999.0, FloatPhase::Sunk) <= 0.0);
         let done = FloatReverse { elapsed_ms: 500.0 + 1e-9, media_at_disable_ms: 1500.0 };
         assert!(float_reverse_finished(&[s.clone()], &done), "反演结束");
         let undone = FloatReverse { elapsed_ms: 499.0, media_at_disable_ms: 1500.0 };

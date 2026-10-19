@@ -49,6 +49,19 @@ transform 下定义于元素空间的语义一致)与恒定 `mask_gradient`;
 这是 CSS `mask-image: linear-gradient` 的合成器等价实现:带内逐像素
 线性插值、带外取端值,替代先前的内容裁剪切片逼近(有可见带状)。
 
+## 变更点(五):quad 携带元素变换
+
+`src/shaders.hlsl`(带 `[AMLL patch]` 注释):`Quad` 结构体追加
+`TransformationMatrix transformation`(160 字节偏移,总尺寸 184 与
+Rust 侧逐字节一致);`quad_vertex` 顶点经 `to_device_position_transformed`
+到设备空间、裁剪在局部空间(与文字精灵裁剪修复同一语义);
+`quad_fragment` 以 `quad_local_point`(逆矩阵,行向量约定与正向变换
+`mul(position, RS) + T` 成对)把像素位置映射回局部空间求 SDF 与渐变,
+单位矩阵时与原路径逐位一致。
+
+这是 quad `snap_bounds` 像素吸附的亚像素修正:变换作用域内几何
+不吸附,慢速缩放动画(间奏圆点呼吸)不再出现 1px 级跳变。
+
 ## 维护
 
 升级 gpui-kit(连带 gpui-pre-windows 版本)时,对照新版
