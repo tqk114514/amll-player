@@ -49,10 +49,11 @@ const LINE_HEIGHT_EM: f64 = 1.2;
 const LINE_TOTAL_EM: f64 = WRAPPER_PAD_EM * 2.0 + LINE_HEIGHT_EM;
 /// 文字左缘内缩(--lyric-line-padding-x = 1em)
 const TEXT_INSET_X_EM: f64 = 1.0;
-/// 文本 alpha(上游 = 行 opacity × 词 mask alpha;blur 是 Phase 2):
-/// 激活 0.85×1.0;未激活 1.0×0.2
-const TEXT_ALPHA_ACTIVE: f64 = 0.85;
-const TEXT_ALPHA_DIM: f64 = 0.2;
+/// 词 mask alpha(上游 --bright/--dark-mask-alpha;行 opacity 另行调制):
+/// 激活行 bright=1.0 / dark=0.4;未激活行 solid 0.2
+const MASK_ALPHA_BRIGHT: f64 = 1.0;
+const MASK_ALPHA_DARK: f64 = 0.4;
+const MASK_ALPHA_SOLID: f64 = 0.2;
 /// alpha 过渡时长(gradientMask 0.3s / solid 0.45s,ease-out)
 const ALPHA_TO_ACTIVE_SEC: f64 = 0.3;
 const ALPHA_TO_DIM_SEC: f64 = 0.45;
@@ -63,6 +64,15 @@ const DOT_MARGIN_EM: f64 = 0.4;
 const DOT_PAD_EM: f64 = 0.8;
 /// 行 opacity:高亮 0.85,其余 1.0(上游 resolveOpacity)
 const LINE_OPACITY_HIGHLIGHTED: f64 = 0.85;
+
+/// 歌词字体(App 实配:字体栈回退 Segoe UI,字重 600)
+fn lyric_font() -> gpui::Font {
+    gpui::Font {
+        family: SharedString::from(".SystemUIFont"),
+        weight: FontWeight::from(600.0),
+        ..Default::default()
+    }
+}
 
 /// 文本 alpha 的 ease-out 过渡(上游 CSS 变量 transition)
 struct AlphaTween {
@@ -132,7 +142,10 @@ pub struct LyricPage {
 
     pos_y: Vec<Spring>,
     scale: Vec<Spring>,
-    alpha: Vec<AlphaTween>,
+    alpha_bright: Vec<AlphaTween>,
+    alpha_dark: Vec<AlphaTween>,
+    /// 各行的词元 span 布局(随字号重建)
+    word_spans: Vec<Vec<crate::words::WordSpan>>,
     /// 入场(2H 滑入)是否完成
     entered: bool,
     /// 强制重排版(首帧/尺寸变化/播放状态翻转)
@@ -183,7 +196,9 @@ impl LyricPage {
             calculator: LayoutCalculator::new(count, 0.0),
             pos_y: (0..count).map(|_| Spring::new(0.0)).collect(),
             scale,
-            alpha: (0..count).map(|_| AlphaTween::new(TEXT_ALPHA_DIM)).collect(),
+            alpha_bright: (0..count).map(|_| AlphaTween::new(MASK_ALPHA_SOLID)).collect(),
+            alpha_dark: (0..count).map(|_| AlphaTween::new(MASK_ALPHA_SOLID)).collect(),
+            word_spans: (0..count).map(|_| Vec::new()).collect(),
             entered: false,
             layout_dirty: true,
             current_stiffness: 0.0,
@@ -365,14 +380,13 @@ impl LyricPage {
                 SCALE_ASPECT
             };
             self.scale[index].set_target_position(scale_target, 0.0);
-            self.alpha[index].retarget(
-                if active {
-                    TEXT_ALPHA_ACTIVE
-                } else {
-                    TEXT_ALPHA_DIM
-                },
-                now,
-            );
+            let (bright, dark) = if active {
+                (MASK_ALPHA_BRIGHT, MASK_ALPHA_DARK)
+            } else {
+                (MASK_ALPHA_SOLID, MASK_ALPHA_SOLID)
+            };
+            self.alpha_bright[index].retarget(bright, now);
+            self.alpha_dark[index].retarget(dark, now);
         }
 
         self.pending_events.push(serde_json::json!({
@@ -416,7 +430,8 @@ impl LyricPage {
         self.playing
             || self.pos_y.iter().any(|spring| !spring.arrived())
             || self.scale.iter().any(|spring| !spring.arrived())
-            || self.alpha.iter().any(|tween| tween.animating(now))
+            || self.alpha_bright.iter().any(|tween| tween.animating(now))
+            || self.alpha_dark.iter().any(|tween| tween.animating(now))
             || self.trace.is_some()
     }
 
@@ -493,6 +508,29 @@ impl Render for LyricPage {
             for index in 0..count {
                 self.calculator.set_line_height(index, line_height);
             }
+            // 词元 span 布局:CJK 逐字/拉丁成组/空格零时长,逐 span 测宽排位
+            let font = lyric_font();
+            for (index, line) in self.timeline.lines().iter().enumerate() {
+                let atoms = crate::words::atomize(&line.words);
+                let mut spans = crate::words::group_spans(&atoms);
+                let mut x = 0.0;
+                for span in &mut spans {
+                    let shared: SharedString = span.text.clone().into();
+                    let runs = [gpui::TextRun {
+                        len: shared.len(),
+                        font: font.clone(),
+                        color: Hsla::default(),
+                        ..Default::default()
+                    }];
+                    let shaped = window
+                        .text_system()
+                        .shape_line(shared, px(font_size as f32), &runs, None);
+                    span.width = (shaped.width() / px(1.0)) as f64;
+                    span.x = x;
+                    x += span.width;
+                }
+                self.word_spans[index] = spans;
+            }
             self.layout_dirty = true;
         }
         let playing_flipped = self.was_playing != self.playing;
@@ -558,7 +596,16 @@ impl Render for LyricPage {
                 .iter()
                 .map(|spring| spring.current_position())
                 .collect();
-            let as_: Vec<f64> = self.alpha.iter().map(|tween| tween.sample(now)).collect();
+            let as_: Vec<f64> = self
+                .alpha_bright
+                .iter()
+                .map(|tween| tween.sample(now))
+                .collect();
+            let a_darks: Vec<f64> = self
+                .alpha_dark
+                .iter()
+                .map(|tween| tween.sample(now))
+                .collect();
             let hl: Vec<usize> = highlighted.to_vec();
             let ops: Vec<f64> = (0..count)
                 .map(|index| {
@@ -581,9 +628,9 @@ impl Render for LyricPage {
                     self.blur_level(index, in_viewport, active)
                 })
                 .collect();
-            (ys, ss, as_, ops, blurs, hl)
+            (ys, ss, as_, a_darks, ops, blurs, hl)
         });
-        if let (Some(trace), Some((ys, ss, as_, ops, blurs, hl))) =
+        if let (Some(trace), Some((ys, ss, as_, a_darks, ops, blurs, hl))) =
             (self.trace.as_mut(), trace_snapshot)
         {
             for event in self.pending_events.drain(..) {
@@ -607,6 +654,7 @@ impl Render for LyricPage {
                 "y": ys,
                 "s": ss,
                 "a": as_,
+                "aDark": a_darks,
                 "op": ops,
                 "blur": blurs,
             }));
@@ -660,25 +708,34 @@ impl Render for LyricPage {
             } else {
                 1.0
             };
-            let text_alpha = self.alpha[index].sample(now);
             click_bands.push((y, y + line_total, line.start_time_ms));
 
+            // 逐词揭示元素(未激活行为 solid 单色;激活行按词元时间线揭示)
+            let active = highlighted.contains(&index)
+                || (index >= self.timeline.scroll_to_index()
+                    && index
+                        < self
+                            .timeline
+                            .latest_highlighted()
+                            .unwrap_or_else(|| self.timeline.scroll_to_index()));
+            let word_element = crate::words::WordLineElement::new(
+                self.word_spans[index].clone(),
+                lyric_font(),
+                font,
+                line_box,
+                active,
+                self.alpha_bright[index].sample(now),
+                self.alpha_dark[index].sample(now),
+                self.position_ms,
+            );
             // 静态文字层:位置恒为 (内缩 1em, 上留白 0.4em)
             let text_element = div()
                 .absolute()
                 .left(px(inset_x as f32))
                 .top(px(pad_y as f32))
                 .w(px(text_width as f32))
-                .text_size(px(font as f32))
-                .line_height(px(line_box as f32))
-                .font_weight(FontWeight::from(600.0))
-                .text_color(Hsla {
-                    h: 0.0,
-                    s: 0.0,
-                    l: 1.0,
-                    a: text_alpha as f32,
-                })
-                .child(text);
+                .h(px(line_box as f32))
+                .child(word_element);
             children.push(
                 div()
                     .id(("lyric-line", index))

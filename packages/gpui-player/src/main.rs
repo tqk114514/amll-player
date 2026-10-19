@@ -12,6 +12,7 @@ mod lyric_page;
 mod spring;
 mod timeline;
 mod transform;
+mod words;
 mod trace;
 
 use std::path::PathBuf;
