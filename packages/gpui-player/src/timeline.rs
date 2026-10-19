@@ -334,6 +334,11 @@ impl Timeline {
         self.active_interlude.is_some()
     }
 
+    /// 该行是否正在播放(上游 playingGroups.has)
+    pub fn is_playing_line(&self, index: usize) -> bool {
+        self.playing.contains(&index)
+    }
+
     /// 焦点是否在间奏圆点上(上游 isFocusOnInterlude:命中间奏且无任何高亮)
     pub fn focus_on_interlude(&self) -> bool {
         self.active_interlude.is_some() && self.highlighted.is_empty()

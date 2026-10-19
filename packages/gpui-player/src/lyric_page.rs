@@ -25,6 +25,12 @@
 //!   (quad 圆角=半径)经绘制期矩阵缩放(本地 patch:quad 携带变换,
 //!   顶点变换 + 逆矩阵回局部空间求 SDF,变换作用域内不做像素吸附)
 //! - 初始入场:全部行 posY 起于 2×H(屏幕下方),以 slow 参数整块滑入(上游行为)
+//! - 拖动滚动(M4b):上游 ScrollInteractionEngine 状态机(scroll.rs)——
+//!   触摸 10px 意图阈值、松手惯性 0.95^(Δt/16.67) 衰减、滚轮 150ms 防抖
+//!   离散步进(弹簧平滑)、边界钳制;滚动挂起期间 FocusController 冻结
+//!   焦点,滚轮静止 500ms 且焦点行进入视口后恢复自动对齐;seek(非触摸
+//!   滚动中)清空滚动状态。平台未暴露原始触摸,触摸平移经 gpui 手势
+//!   识别器以滚轮事件投递;引擎触摸分支已完整移植待接线
 
 use std::time::Instant;
 
@@ -34,7 +40,7 @@ use gpui_kit::{
     Render, SharedString, Size, Styled, FontWeight, Window, div, px, rgba,
 };
 
-use crate::layout::{AlignAnchor, FrameContext, InterludeLayout, LayoutCalculator, LayoutTarget};
+use crate::layout::{AlignAnchor, FrameContext, InterludeLayout, LayoutCalculator};
 use crate::spring::{pos_y_policy, scale_policy, Spring, SpringParams};
 use crate::timeline::{LyricLine, SeekDetector, Timeline, TimelineDiff};
 use crate::trace::{PixelTrace, TraceState};
@@ -75,6 +81,23 @@ const DOT_PAD_EM: f64 = 0.8;
 const LINE_OPACITY_HIGHLIGHTED: f64 = 0.85;
 /// wrapper opacity 的 CSS transition:`transition: opacity .4s`(默认 ease)
 const LINE_OPACITY_TRANSITION_SEC: f64 = 0.4;
+
+/// 排版原因(上游 LayoutReason)。策略映射(上游 consts.ts):
+/// stagger 仅正常播放开启;直贴 Y(snapPosY)仅连续滚动(触摸拖动跟手),
+/// 滚轮步进保留弹簧平滑;Seek/RebuildView 重置间奏演出。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LayoutReason {
+    PlaybackTick,
+    #[allow(dead_code)]
+    Resize,
+    #[allow(dead_code)]
+    InteractionStart,
+    ContinuousScroll,
+    DiscreteScroll,
+    Seek,
+    RebuildView,
+    ConfigChange,
+}
 
 /// 歌词字体(App 实配:字体栈回退 Segoe UI,字重 600)
 fn lyric_font() -> gpui::Font {
@@ -218,6 +241,16 @@ pub struct LyricPage {
     last_dots_state: Option<(f64, [f64; 3], f64)>,
     /// 排版事件缓冲(trace 写出用)
     pending_events: Vec<serde_json::Value>,
+    /// 滚动交互引擎(上游 ScrollInteractionEngine)
+    scroll_engine: crate::scroll::ScrollEngine,
+    /// 对齐焦点状态机(上游 FocusController:滚动挂起期间冻结目标)
+    focus: crate::layout::FocusController,
+    /// 用户滚动过,尚未回归自动对齐
+    is_auto_align_suspended: bool,
+    /// 最近一次交互是否触摸(上游 isTouchScrolled:触摸滚动期间 seek 不重置滚动)
+    is_touch_scrolled: bool,
+    /// 滚动触发的待重排版原因(策略映射的消费入口)
+    scroll_dirty: Option<crate::scroll::ScrollLayoutReason>,
 
     trace: Option<TraceState>,
     /// 像素级追踪(--trace-pixels):逐帧读回呈现输出并差分
@@ -274,6 +307,11 @@ impl LyricPage {
             current_damping: 0.0,
             last_interlude_y: None,
             pending_events: Vec::new(),
+            scroll_engine: crate::scroll::ScrollEngine::new(),
+            focus: crate::layout::FocusController::new(),
+            is_auto_align_suspended: false,
+            is_touch_scrolled: false,
+            scroll_dirty: None,
             trace,
             pixel_trace: pixel_dir.map(PixelTrace::new),
             last_frame: None,
@@ -404,59 +442,58 @@ impl LyricPage {
         }
     }
 
-    /// 单帧排版(上游 calcLayout + setLineTransformations 的合并)
-    fn calc_layout(&mut self, is_seek: bool, media_ms: f64, reason: &str) {
+    /// 单帧排版(上游 calcLayout + setLineTransformations 的合并;
+    /// reason 决定策略:stagger / 直贴 Y / 间奏重置)
+    fn calc_layout(&mut self, reason: LayoutReason, media_ms: f64, trace_reason: &str) {
         let count = self.timeline.lines().len();
         if count == 0 || self.container_height <= 0.0 {
             return;
         }
         let first_layout = !self.entered;
+        let snap_pos_y = matches!(reason, LayoutReason::ContinuousScroll);
 
-        // 焦点解析(上游 FocusController.resolve,无用户滚动挂起)
+        // 焦点解析(上游 FocusController.resolve):滚动挂起期间冻结
         let focus_on_interlude = self.timeline.focus_on_interlude();
         let can_display = self.timeline.can_display_interlude();
-        let (target, interlude) = if focus_on_interlude && can_display {
-            let anchor = self
-                .timeline
-                .active_interlude()
-                .map(|inter| inter.anchor)
-                .unwrap_or(-1);
-            (
-                LayoutTarget::Interlude(anchor),
-                Some(InterludeLayout {
-                    total_height: self.interlude_total_height(),
-                    anchor,
-                }),
-            )
-        } else if focus_on_interlude {
-            // 圆点剩余时间不足以展示:焦点顺延到锚点后一行
-            let next = (self
-                .timeline
-                .active_interlude()
-                .map(|inter| inter.anchor)
-                .unwrap_or(-1)
-                + 1)
-                .max(0) as usize;
-            (LayoutTarget::Line(next.min(count - 1)), None)
-        } else if self.timeline.end_of_song() {
-            (LayoutTarget::Line(count - 1), None)
+        let active_interlude = self.timeline.active_interlude();
+        let target = self.focus.resolve(
+            focus_on_interlude,
+            active_interlude.map(|inter| inter.anchor),
+            can_display,
+            self.timeline.end_of_song(),
+            self.timeline.scroll_to_index().min(count.saturating_sub(1)),
+            count,
+            self.is_auto_align_suspended,
+        );
+        // 间奏占位独立于焦点(上游 ctx.interlude = canDisplay ? interlude :
+        // undefined,不看 isFocusOnInterlude——残留高亮期间 spacer 仍在)
+        let interlude = if can_display {
+            active_interlude.map(|inter| InterludeLayout {
+                total_height: self.interlude_total_height(),
+                anchor: inter.anchor,
+            })
         } else {
-            (
-                LayoutTarget::Line(self.timeline.scroll_to_index().min(count - 1)),
-                None,
-            )
+            None
         };
 
-        let ctx = FrameContext {
+        let mut ctx = FrameContext {
             container_height: self.container_height,
             align_position: ALIGN_POSITION,
             align_anchor: AlignAnchor::Top,
             overscan_px: OVERSCAN_PX,
-            scroll_offset: 0.0,
+            scroll_offset: self.scroll_engine.offset(),
             target,
             interlude,
         };
-        let result = self.calculator.layout(&ctx);
+        let mut result = self.calculator.layout(&ctx);
+        // 滚动边界与钳制(上游 scrollEngine.updateBoundary)
+        let clamped_offset = self
+            .scroll_engine
+            .update_boundary(result.bounds_min, result.bounds_max);
+        if (clamped_offset - ctx.scroll_offset).abs() > 1e-9 {
+            ctx.scroll_offset = clamped_offset;
+            result = self.calculator.layout(&ctx);
+        }
         self.last_interlude_y = result.interlude_y;
 
         // 入场(上游:行创建时 posY = 2×H,首次排版以 Seek 语义整块滑入)
@@ -468,8 +505,9 @@ impl LyricPage {
             self.entered = true;
         }
 
-        // stagger(上游:仅 PlaybackTick 开启;自视口顶部向下累积)
-        let stagger = !is_seek && !first_layout;
+        // stagger(上游 LayoutReasonStrategyMap:仅 PlaybackTick 开启;
+        // 自视口顶部向下累积);ContinuousScroll 直贴 Y(触摸拖动跟手)
+        let stagger = matches!(reason, LayoutReason::PlaybackTick) && !first_layout;
         let scroll_to = self.timeline.scroll_to_index();
         let mut delay = 0.0;
         let mut base_delay = STAGGER_BASE_DELAY_SEC;
@@ -477,7 +515,11 @@ impl LyricPage {
         for (index, instruction) in result.lines.iter().enumerate() {
             let d = if stagger { delay } else { 0.0 };
             delays.push(d);
-            self.pos_y[index].set_target_position(instruction.y, d);
+            if snap_pos_y {
+                self.pos_y[index].set_position(instruction.y);
+            } else {
+                self.pos_y[index].set_target_position(instruction.y, d);
+            }
             if stagger && instruction.y + instruction.height >= 0.0 {
                 delay += base_delay;
                 if index >= scroll_to {
@@ -535,11 +577,12 @@ impl LyricPage {
             self.prev_active[index] = active;
         }
 
-        // 间奏圆点行:posY 弹簧到 interludeY + dotMargin(上游 setTransform)
+        // 间奏圆点行:posY 弹簧到 interludeY + dotMargin(上游 setTransform
+        // 的 immediate = snapPosY:连续滚动直贴跟手)
         if let Some(interlude_y) = result.interlude_y {
             let dot_margin = self.font_size * crate::dots::DOT_MARGIN_EM;
             let target = interlude_y + dot_margin;
-            if !self.dots_entered {
+            if snap_pos_y || !self.dots_entered {
                 self.dots_y.set_position(target);
                 self.dots_entered = true;
             } else {
@@ -549,9 +592,9 @@ impl LyricPage {
 
         self.pending_events.push(serde_json::json!({
             "ev": "retarget",
-            "reason": reason,
+            "reason": trace_reason,
             "media": media_ms,
-            "seek": is_seek,
+            "seek": matches!(reason, LayoutReason::Seek),
             "stagger": stagger,
             "first": first_layout,
             "k": self.current_stiffness,
@@ -584,6 +627,16 @@ impl LyricPage {
         level.min(5.0)
     }
 
+    /// 行是否在真实视口内(上游 isInRenderRange(false),不含 overscan)
+    fn row_in_viewport(&self, index: usize) -> bool {
+        let Some(spring) = self.pos_y.get(index) else {
+            return false;
+        };
+        let y = spring.current_position();
+        let height = self.font_size * LINE_TOTAL_EM;
+        self.container_height > 0.0 && y < self.container_height && y + height > 0.0
+    }
+
     fn animating(&self, now: Instant) -> bool {
         self.playing
             || self.pos_y.iter().any(|spring| !spring.arrived())
@@ -596,6 +649,8 @@ impl LyricPage {
                 .iter()
                 .any(|phase| matches!(phase, crate::words::FloatPhase::Reversing(_)))
             || !self.dots_y.arrived()
+            || self.scroll_engine.is_active()
+            || self.scroll_dirty.is_some()
             || self.trace.is_some()
     }
 
@@ -641,10 +696,40 @@ impl Render for LyricPage {
 
         // 2) 时间轴同步(seek 检测 → diff)
         let wall_ms = self.wall_origin.elapsed().as_millis() as f64;
+        let was_focus_on_interlude = self.timeline.focus_on_interlude();
         let is_seek = self
             .detector
             .detect(self.position_ms, wall_ms, self.playing);
         let diff: TimelineDiff = self.timeline.sync(self.position_ms, is_seek);
+
+        // 滚动引擎逐帧推进(惯性物理与滚轮防抖,墙钟驱动)
+        let scroll_advance = self.scroll_engine.advance(delta * 1000.0, wall_ms);
+        if scroll_advance.updated {
+            self.scroll_dirty = Some(crate::scroll::ScrollLayoutReason::ContinuousScroll);
+        }
+        // 恢复自动对齐 / seek 重置(上游 syncTime 的滚动分支):
+        // - seek(非触摸滚动中):清空全部滚动状态回归自动对齐
+        // - 焦点行切换且新行已进入真实视口、滚动静止超 500ms:同样回归
+        if diff.has_changed {
+            let scroll_to = self.timeline.scroll_to_index();
+            if diff.is_time_jumped {
+                if !self.is_touch_scrolled {
+                    self.scroll_engine.reset_scroll(0.0);
+                    self.is_auto_align_suspended = false;
+                    self.is_touch_scrolled = false;
+                }
+            } else if (diff.is_scroll_to_changed || was_focus_on_interlude)
+                && !self.timeline.focus_on_interlude()
+                && self.timeline.is_playing_line(scroll_to)
+                && self.is_auto_align_suspended
+                && self.scroll_engine.can_resume_auto_align(wall_ms)
+                && self.row_in_viewport(scroll_to)
+            {
+                self.scroll_engine.reset_scroll(0.0);
+                self.is_auto_align_suspended = false;
+                self.is_touch_scrolled = false;
+            }
+        }
 
         // 3) 容器与字号(随窗口变化,变化即重排版)
         self.container_size = Some(window.bounds().size);
@@ -698,10 +783,17 @@ impl Render for LyricPage {
         let playing_flipped = self.was_playing != self.playing;
         self.was_playing = self.playing;
 
-        // 4) 重排版(上游 syncTime:diff.hasChanged → updateSpringParams + calcLayout;
-        //    播放状态翻转/首帧/尺寸变化 → ConfigChange 语义的强制重排版)
-        if diff.has_changed || self.layout_dirty || playing_flipped || size_changed {
-            let forced_slow = is_seek || !self.entered;
+        // 4) 重排版(上游 syncTime:diff.hasChanged → updateSpringParams +
+        //    calcLayout;播放状态翻转/首帧/尺寸变化 → ConfigChange;
+        //    滚动事件 → 对应滚动原因的策略)
+        let scroll_reason = self.scroll_dirty.take();
+        if diff.has_changed
+            || self.layout_dirty
+            || playing_flipped
+            || size_changed
+            || scroll_reason.is_some()
+        {
+            let forced_slow = diff.is_time_jumped || !self.entered;
             if diff.is_interlude_changed
                 || diff.is_scroll_to_changed
                 || diff.is_end_of_song_changed
@@ -716,16 +808,28 @@ impl Render for LyricPage {
                 }
                 self.dots_y.update_params(patch, 0.0);
             }
-            let reason = if !self.entered {
-                "rebuild-view"
-            } else if is_seek {
-                "seek"
+            let (reason, trace_reason) = if let Some(scroll_reason) = scroll_reason {
+                match scroll_reason {
+                    crate::scroll::ScrollLayoutReason::InteractionStart => {
+                        (LayoutReason::InteractionStart, "interaction-start")
+                    }
+                    crate::scroll::ScrollLayoutReason::ContinuousScroll => {
+                        (LayoutReason::ContinuousScroll, "continuous-scroll")
+                    }
+                    crate::scroll::ScrollLayoutReason::DiscreteScroll => {
+                        (LayoutReason::DiscreteScroll, "discrete-scroll")
+                    }
+                }
+            } else if !self.entered {
+                (LayoutReason::RebuildView, "rebuild-view")
+            } else if diff.is_time_jumped {
+                (LayoutReason::Seek, "seek")
             } else if playing_flipped || size_changed {
-                "config-change"
+                (LayoutReason::ConfigChange, "config-change")
             } else {
-                "playback-tick"
+                (LayoutReason::PlaybackTick, "playback-tick")
             };
-            self.calc_layout(is_seek, self.position_ms, reason);
+            self.calc_layout(reason, self.position_ms, trace_reason);
             self.layout_dirty = false;
         }
 
@@ -834,6 +938,7 @@ impl Render for LyricPage {
                 "reveal": reveal,
                 "k": self.current_stiffness,
                 "d": self.current_damping,
+                "so": self.scroll_engine.offset(),
                 "interludeY": self.last_interlude_y,
                 "y": ys,
                 "s": ss,
@@ -949,7 +1054,10 @@ impl Render for LyricPage {
 
         // 间奏圆点行(上游 InterludeDotsEl):焦点在间奏且可展示时演出;
         // 间奏被正常结束截断时做 150ms 淡出,seek 截断则立即消失
-        let dots_visible = self.timeline.focus_on_interlude() && self.timeline.can_display_interlude();
+        // 上游:圆点元素只在 canDisplay && interlude 存在时定位演出,
+        // 与焦点无关(残留高亮/滚动挂起期间圆点仍在原位)
+        let dots_visible =
+            self.timeline.can_display_interlude() && self.timeline.active_interlude().is_some();
         if dots_visible {
             self.dots_dismiss = None;
             let interlude = self.timeline.active_interlude().expect("focus 校验过");
@@ -985,6 +1093,27 @@ impl Render for LyricPage {
                 .id("lyric-click-layer")
                 .absolute()
                 .size_full()
+                .on_scroll_wheel(cx.listener(
+                    move |this: &mut LyricPage, event: &gpui::ScrollWheelEvent, _window, cx| {
+                        // gpui 传 Windows 原生符号(向前滚为正);浏览器语义
+                        // 向下滚为正,取反。Pixels 为精确步进;Lines 按上游
+                        // 非像素模式 ×50
+                        let (delta, line_mode) = match event.delta {
+                            gpui::ScrollDelta::Pixels(p) => {
+                                (-(p.y / px(1.0)) as f64, false)
+                            }
+                            gpui::ScrollDelta::Lines(l) => (-(l.y) as f64, true),
+                        };
+                        let interaction_started = this.scroll_engine.wheel(delta, line_mode);
+                        if interaction_started {
+                            this.is_auto_align_suspended = true;
+                            this.is_touch_scrolled = false;
+                        }
+                        this.scroll_dirty =
+                            Some(crate::scroll::ScrollLayoutReason::DiscreteScroll);
+                        cx.notify();
+                    },
+                ))
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(

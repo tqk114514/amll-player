@@ -15,6 +15,7 @@ mod ease;
 mod timeline;
 mod transform;
 mod words;
+mod scroll;
 mod trace;
 
 use std::path::PathBuf;

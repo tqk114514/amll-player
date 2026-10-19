@@ -1,20 +1,21 @@
-fix(gpui): 圆点微动与退激活上顿两处修复;quad 携带元素变换
+feat(gpui): M4b 拖动惯性滚动——ScrollInteractionEngine/FocusController 移植
 
-- 圆点微动:根因是 paint_quad 的 snap_bounds 把几何吸附到设备像素,
-  慢速呼吸(≈0.24px/帧)表现为周期性 1px 跳变。升级为 quad 携带
-  变换矩阵(用户拍板;zed 新版上游的 quad 亦无此能力,系自行设计):
-  顶点经 to_device_position_transformed 到设备空间,像素着色器以
-  逆矩阵(行向量约定与正向变换成对)把像素位置映射回局部空间求
-  SDF 与渐变——单位矩阵路径逐位保持原行为;变换作用域内不吸附,
-  亚像素精度经顶点矩阵应用。Quad 追加字段于 160 字节偏移(总 184,
-  Rust/HLSL 逐字节一致,尺寸守卫测试锚定)。圆点回归 SDF 几何圆
-  (quad 圆角=半径,等价上游 span + border-radius: 50%),三颗圆点
-  几何恒定,呼吸/退场缩放与 posY 弹簧全部经矩阵
-- 退激活上顿:退激活状态收敛后被整个清除,float 从反演回落瞬跳回
-  媒体时间推导的全浮起位置(词已唱完 → t=1),表现为亮度暗下去后
-  轻微上弹。上游语义是动画播完 fill: both 保持落回——新增 Sunk
-  阶段(Active/Reversing/Sunk 状态机),反演完成后保持 0 直到
-  重新激活(enable 重设动画时钟)
-- 冒烟验证:253 帧全程渲染(quad 管线改动零回归);圆点呼吸
-  46→55→46 与 7400ms 理论周期吻合、退场蓄力峰值 1.25× 精确复现;
-  退激活补间 13642→14122 完整走满 450ms 平滑收敛;37 测试全绿
+- scroll.rs:上游 ScrollInteractionEngine 状态机完整移植(8 项单测锁定):
+  触摸 10px 意图阈值、速度 px/ms 跟踪、松手惯性 0.95^(Δt/16.67) 衰减
+  (掉帧步进丢弃、|speed|≤0.05 停止、<0.1 归零)、滚轮 150ms 防抖
+  离散步进(行模式 ×50)、边界钳制(min/max 向 0 收拢)、滚动静止
+  500ms 后可恢复自动对齐;触摸按下打断惯性、轻点恢复收尾
+- layout.rs:FocusController(上游 focus.ts)——滚动挂起期间冻结上帧
+  焦点、冻结间奏遇结束顺延锚点后一行、未挂起跟随播放(3 项单测)
+- lyric_page.rs:
+  - LayoutReason 策略映射(上游 consts.ts):stagger 严格仅 PlaybackTick
+    (旧代码 config-change 也开,更贴上游);ContinuousScroll 直贴 Y
+    (触摸跟手)、DiscreteScroll 保留弹簧;滚动偏移经 update_boundary
+    钳制后进排版(预留的 bounds_min/max 接通)
+  - 恢复自动对齐:焦点行切换且新行入真实视口、滚动静止 ≥500ms →
+    重置回自动对齐;seek(非触摸滚动中)清空滚动状态
+  - 滚轮接线:Windows 原生符号取反为浏览器语义;挂起自动对齐
+  - 间奏 spacer 与焦点解耦(上游 ctx.interlude 只看 canDisplay,
+    残留高亮期间 spacer 与圆点保持)——修正 mid-song 间奏的布局跳变
+- 冒烟:与改造前 trace 逐帧对比——静止检查点(y/s/op/a)逐位一致,
+  retarget 序列对准全部优化行起始,弹簧轨迹同曲线;48 测试全绿

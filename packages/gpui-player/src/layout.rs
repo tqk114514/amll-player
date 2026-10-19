@@ -263,3 +263,119 @@ mod tests {
         assert!(result.lines[9].in_viewport);
     }
 }
+
+/// 对齐焦点状态机(上游 FocusController)。
+///
+/// 规则(上游原样):用户滚动挂起期间冻结上一帧的焦点目标,不再跟随
+/// 播放进度;冻结在间奏圆点行而间奏已结束/不可展示时,顺延至锚点后
+/// 一行;未挂起时跟随播放状态——间奏中对齐圆点行,曲末对齐末行,
+/// 其余对齐 `scrollToIndex`(原型无底栏,曲末带底栏分支省略)。
+pub struct FocusController {
+    target: LayoutTarget,
+}
+
+impl Default for FocusController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FocusController {
+    pub fn new() -> Self {
+        Self {
+            target: LayoutTarget::Line(0),
+        }
+    }
+
+    /// 重置焦点至首行(上游 rebuildLyricView 时调用;原型重建即构造,
+    /// 语义保留待切歌场景)
+    #[allow(dead_code)]
+    pub fn reset(&mut self) {
+        self.target = LayoutTarget::Line(0);
+    }
+
+    /// 推导本帧对齐焦点,并记录为新的冻结目标
+    #[allow(clippy::too_many_arguments)]
+    pub fn resolve(
+        &mut self,
+        focus_on_interlude: bool,
+        interlude_anchor: Option<i64>,
+        can_display_interlude: bool,
+        end_of_song: bool,
+        scroll_to: usize,
+        line_count: usize,
+        suspended: bool,
+    ) -> LayoutTarget {
+        let clamp = |index: usize| index.min(line_count.saturating_sub(1));
+        let next = if suspended {
+            match self.target {
+                LayoutTarget::Line(index) => LayoutTarget::Line(clamp(index)),
+                LayoutTarget::Interlude(anchor) => {
+                    let interlude_active = focus_on_interlude
+                        && interlude_anchor.is_some()
+                        && can_display_interlude;
+                    if interlude_active {
+                        LayoutTarget::Interlude(anchor)
+                    } else {
+                        LayoutTarget::Line(clamp((anchor + 1).max(0) as usize))
+                    }
+                }
+            }
+        } else if focus_on_interlude
+            && let Some(anchor) = interlude_anchor
+        {
+            if can_display_interlude {
+                LayoutTarget::Interlude(anchor)
+            } else {
+                LayoutTarget::Line(clamp((anchor + 1).max(0) as usize))
+            }
+        } else if end_of_song {
+            LayoutTarget::Line(clamp(line_count.saturating_sub(1)))
+        } else {
+            LayoutTarget::Line(clamp(scroll_to))
+        };
+        self.target = next;
+        next
+    }
+}
+
+#[cfg(test)]
+mod focus_tests {
+    use super::*;
+
+    #[test]
+    fn suspended_freezes_line_target_while_playback_advances() {
+        let mut f = FocusController::new();
+        // 正常跟随:scrollTo 从 0 → 2
+        assert_eq!(f.resolve(false, None, false, false, 0, 5, false), LayoutTarget::Line(0));
+        assert_eq!(f.resolve(false, None, false, false, 2, 5, false), LayoutTarget::Line(2));
+        // 挂起:冻结在 2,scrollTo 推进到 3 也不跟
+        assert_eq!(f.resolve(false, None, false, false, 3, 5, true), LayoutTarget::Line(2));
+        assert_eq!(f.resolve(false, None, false, false, 4, 5, true), LayoutTarget::Line(2));
+        // 解除后立即跟上
+        assert_eq!(f.resolve(false, None, false, false, 4, 5, false), LayoutTarget::Line(4));
+    }
+
+    #[test]
+    fn suspended_interlude_falls_through_when_ended() {
+        let mut f = FocusController::new();
+        // 未挂起时对齐间奏(锚点 1)
+        assert_eq!(f.resolve(true, Some(1), true, false, 2, 5, false), LayoutTarget::Interlude(1));
+        // 挂起期间间奏仍活跃:保持
+        assert_eq!(f.resolve(true, Some(1), true, false, 2, 5, true), LayoutTarget::Interlude(1));
+        // 间奏结束(不再聚焦间奏):顺延到锚点后一行
+        assert_eq!(f.resolve(false, None, false, false, 2, 5, true), LayoutTarget::Line(2));
+        // 行数收缩时钳制
+        let mut g = FocusController::new();
+        assert_eq!(g.resolve(true, Some(4), true, false, 2, 3, false), LayoutTarget::Interlude(4));
+        assert_eq!(g.resolve(false, None, false, false, 2, 3, true), LayoutTarget::Line(2), "anchor+1=5 钳到 2");
+    }
+
+    #[test]
+    fn active_follows_end_of_song_and_short_interlude_fallthrough() {
+        let mut f = FocusController::new();
+        assert_eq!(f.resolve(false, None, false, true, 1, 5, false), LayoutTarget::Line(4), "曲末对齐末行");
+        // 间奏不可展示:顺延锚点后一行
+        assert_eq!(f.resolve(true, Some(1), false, false, 0, 5, false), LayoutTarget::Line(2));
+    }
+}
