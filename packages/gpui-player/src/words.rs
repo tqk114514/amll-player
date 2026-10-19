@@ -24,8 +24,7 @@ use crate::timeline::LyricWord;
 pub const FADE_EM: f64 = 0.6;
 /// 词元 padding(上游 1em,margin −1em 抵消布局)
 pub const WORD_PAD_EM: f64 = 1.0;
-/// 渐变边缘的切片数(无 mask-image 的阶梯逼近)
-const FADE_SLICES: usize = 8;
+/// 渐变边缘的阶梯逼近切片:按 1px/片动态取(无 mask-image 的等价实现)
 /// 逐词上浮量(上游 createFloatAnimation:-0.05em,composite add)
 const FLOAT_EM: f64 = 0.05;
 /// 上浮动画最短时长(上游 Math.max(1e3, 词时长))
@@ -308,6 +307,48 @@ impl WordLineElement {
             self.paint_span(window, cx, bounds_origin.0 + span.x, bounds_origin.1, span, alpha);
         });
     }
+
+    /// 揭示中的单个词元:分区绘制(与上游 mask 替换语义一致,不做暗底叠加):
+    /// 亮头 [0, edge−F/2) / 渐变带 [edge−F/2, edge+F/2) / 暗尾 [edge+F/2, W)
+    fn paint_reveal_span(
+        &self,
+        window: &mut Window,
+        cx: &mut App,
+        origin_x: f64,
+        origin_y: f64,
+        index: usize,
+        span: &WordSpan,
+    ) {
+        let edge = reveal_edge(&self.spans, index, self.media_ms, self.fade, self.pad);
+        let bright_end = (edge - self.fade / 2.0).min(span.width).max(0.0);
+        let band_from = (edge - self.fade / 2.0).max(0.0);
+        let band_to = (edge + self.fade / 2.0).min(span.width);
+        if bright_end > 0.0 {
+            self.paint_slice(window, cx, (origin_x, origin_y), span, (0.0, bright_end), self.bright);
+        }
+        if band_to > band_from {
+            // 渐变带按 1px/片阶梯逼近,消除肉眼可见的分层
+            let slices = (self.fade.ceil() as usize).max(2);
+            let slice = (band_to - band_from) / slices as f64;
+            for k in 0..slices {
+                let from = band_from + k as f64 * slice;
+                let to = (band_from + (k + 1) as f64 * slice).min(band_to);
+                let mid = (from + to) / 2.0;
+                let alpha = mask_alpha(edge, self.fade, mid, self.bright, self.dark);
+                self.paint_slice(window, cx, (origin_x, origin_y), span, (from, to), alpha);
+            }
+        }
+        if band_to < span.width {
+            self.paint_slice(
+                window,
+                cx,
+                (origin_x, origin_y),
+                span,
+                (band_to, span.width),
+                self.dark,
+            );
+        }
+    }
 }
 
 impl Element for WordLineElement {
@@ -361,59 +402,31 @@ impl Element for WordLineElement {
         let origin_x = (bounds.origin.x / px(1.0)) as f64;
         let origin_y = (bounds.origin.y / px(1.0)) as f64;
         for (index, span) in self.spans.iter().enumerate() {
+            if !self.active {
+                // solid 模式:整行单色
+                self.paint_span(window, cx, origin_x + span.x, origin_y, span, self.dark);
+                continue;
+            }
             // 逐词上浮(上游 createFloatAnimation):词开始后 ease-out 上浮
-            // 0.05em,最短 1s,唱完保持(fill both),行失活时随重建复位
-            let float_offset = if self.active {
+            // 0.05em,最短 1s,唱完保持。经绘制期矩阵平移(顶点着色器
+            // 精度)而非平移原点——字形原点按整像素吸附,直接平移会让
+            // 1.75px 的上浮变成一两次 1px 瞬移
+            let float_offset = {
                 let duration = (span.end_ms - span.start_ms).max(FLOAT_MIN_MS);
                 let t = ((self.media_ms - span.start_ms) / duration).clamp(0.0, 1.0);
                 -self.font_size * FLOAT_EM * (1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t))
-            } else {
-                0.0
             };
-            let span_y = origin_y + float_offset;
-            if !self.active {
-                // solid 模式:整行单色
-                self.paint_span(window, cx, origin_x + span.x, span_y, span, self.dark);
-                continue;
-            }
-            let edge = reveal_edge(&self.spans, index, self.media_ms, self.fade, self.pad);
-            // 分区绘制(与上游 mask 替换语义一致,不做暗底叠加):
-            // 亮头 [0, edge−F/2) / 渐变带 [edge−F/2, edge+F/2) / 暗尾 [edge+F/2, W]
-            let bright_end = (edge - self.fade / 2.0).min(span.width).max(0.0);
-            let band_from = (edge - self.fade / 2.0).max(0.0);
-            let band_to = (edge + self.fade / 2.0).min(span.width);
-            if bright_end > 0.0 {
-                self.paint_slice(
-                    window,
-                    cx,
-                    (origin_x, span_y),
-                    span,
-                    (0.0, bright_end),
-                    self.bright,
-                );
-            }
-            if band_to > band_from {
-                let slice = (band_to - band_from) / FADE_SLICES as f64;
-                for k in 0..FADE_SLICES {
-                    let from = band_from + k as f64 * slice;
-                    let to = (band_from + (k + 1) as f64 * slice).min(band_to);
-                    let mid = (from + to) / 2.0;
-                    let alpha = mask_alpha(edge, self.fade, mid, self.bright, self.dark);
-                    self.paint_slice(window, cx, (origin_x, span_y), span, (from, to), alpha);
-                }
-            }
-            if band_to < span.width {
-                self.paint_slice(
-                    window,
-                    cx,
-                    (origin_x, span_y),
-                    span,
-                    (band_to, span.width),
-                    self.dark,
-                );
-            }
+            let scale_factor = window.scale_factor();
+            let float_matrix = gpui::TransformationMatrix {
+                rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
+                translation: [0.0, (float_offset * scale_factor as f64) as f32],
+            };
+            window.with_element_transformation(float_matrix, |window| {
+                self.paint_reveal_span(window, cx, origin_x, origin_y, index, span);
+            });
         }
     }
+
 }
 
 impl IntoElement for WordLineElement {

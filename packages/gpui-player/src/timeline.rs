@@ -359,6 +359,12 @@ impl Timeline {
         self.end_of_song
     }
 
+    /// 本次间奏的入场时刻(圆点演出锚点;seek 进入时为进入时刻)
+    pub fn interlude_entry_ms(&self) -> f64 {
+        self.interlude_entry_ms
+    }
+
+
     /// 上游 resolveActiveInterlude:二分(seek)或游标推进(正常播放)
     fn resolve_active_interlude(&mut self, time_ms: f64, is_seek: bool) -> Option<Interlude> {
         if self.interludes.is_empty() {

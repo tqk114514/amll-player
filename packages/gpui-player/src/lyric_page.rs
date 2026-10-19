@@ -155,6 +155,14 @@ pub struct LyricPage {
     current_damping: f64,
     /// 最近一次排版的间奏圆点 y(trace 记录)
     last_interlude_y: Option<f64>,
+    /// 间奏圆点行的 posY 弹簧(上游 interludeDots.posY)
+    dots_y: Spring,
+    /// 圆点行是否完成首次钉位(与行入场同语义)
+    dots_entered: bool,
+    /// 间奏被截断时的 150ms 淡出(截断时刻, 起始透明度, 三点透明度, 缩放)
+    dots_dismiss: Option<(f64, f64, [f64; 3], f64)>,
+    /// 最近一帧可见的圆点状态(退场淡出的起点快照)
+    last_dots_state: Option<(f64, [f64; 3], f64)>,
     /// 排版事件缓冲(trace 写出用)
     pending_events: Vec<serde_json::Value>,
 
@@ -195,6 +203,10 @@ impl LyricPage {
             font_size: 0.0,
             calculator: LayoutCalculator::new(count, 0.0),
             pos_y: (0..count).map(|_| Spring::new(0.0)).collect(),
+            dots_y: Spring::new(0.0),
+            dots_entered: false,
+            dots_dismiss: None,
+            last_dots_state: None,
             scale,
             alpha_bright: (0..count).map(|_| AlphaTween::new(MASK_ALPHA_SOLID)).collect(),
             alpha_dark: (0..count).map(|_| AlphaTween::new(MASK_ALPHA_SOLID)).collect(),
@@ -254,6 +266,66 @@ impl LyricPage {
                 }
             });
         });
+    }
+
+    /// 构造间奏圆点行:wrapper(行透明度/点击层之下)+ ScaledElement
+    /// (呼吸缩放绕行中心)+ 三颗 canvas 圆点(quad 圆角=半径)
+    fn build_dots_element(
+        &self,
+        row_opacity: f64,
+        scale: f64,
+        dot_opacities: [f64; 3],
+    ) -> gpui_kit::AnyElement {
+        let font = self.font_size;
+        let row_height = self.interlude_total_height();
+        let dot_size = font * crate::dots::DOT_SIZE_EM;
+        let gap = font * crate::dots::DOT_GAP_EM;
+        let inset_x = font * crate::dots::WORD_PAD_EM;
+        // 圆点在行内容盒中垂直居中(内容盒 = 总高 − 2×margin)
+        let content_height = row_height - font * crate::dots::DOT_MARGIN_EM * 2.0;
+        let dot_top = font * crate::dots::DOT_MARGIN_EM + (content_height - dot_size) / 2.0;
+        // 行宽 = fit-content(上游 transform-origin: center 以此行为中心呼吸)
+        let row_width = inset_x * 2.0 + dot_size * 3.0 + gap * 2.0;
+
+        let mut dots = Vec::with_capacity(3);
+        for (index, alpha) in dot_opacities.iter().enumerate() {
+            let left = inset_x + index as f64 * (dot_size + gap);
+            let alpha = *alpha;
+            dots.push(
+                gpui::canvas(move |_, _, _| (), move |bounds, _, window, _| {
+                    let radius = bounds.size.width.min(bounds.size.height) / 2.0;
+                    window.paint_quad(gpui::quad(
+                        bounds,
+                        gpui::Corners::all(radius),
+                        gpui::hsla(0.0, 0.0, 1.0, alpha as f32),
+                        gpui::Edges::default(),
+                        gpui::transparent_black(),
+                        gpui::BorderStyle::default(),
+                    ));
+                })
+                .absolute()
+                .left(px(left as f32))
+                .top(px(dot_top as f32))
+                .w(px(dot_size as f32))
+                .h(px(dot_size as f32)),
+            );
+        }
+
+        div()
+            .id("interlude-dots")
+            .absolute()
+            .left(px(0.0))
+            .top(px(self.dots_y.current_position() as f32))
+            .w(px(self.container_width as f32))
+            .h(px(row_height as f32))
+            .opacity(row_opacity as f32)
+            .child(ScaledElement::new(
+                div().relative().w(px(row_width as f32)).h(px(row_height as f32)).children(dots),
+                scale as f32,
+                gpui::point(px(0.0), px(0.0)),
+                gpui::point(px((row_width / 2.0) as f32), px((row_height / 2.0) as f32)),
+            ))
+            .into_any_element()
     }
 
     /// 间奏圆点行总高(上游 totalInterludeHeight = 圆点元素高 + 2×0.4em margin)
@@ -389,6 +461,18 @@ impl LyricPage {
             self.alpha_dark[index].retarget(dark, now);
         }
 
+        // 间奏圆点行:posY 弹簧到 interludeY + dotMargin(上游 setTransform)
+        if let Some(interlude_y) = result.interlude_y {
+            let dot_margin = self.font_size * crate::dots::DOT_MARGIN_EM;
+            let target = interlude_y + dot_margin;
+            if !self.dots_entered {
+                self.dots_y.set_position(target);
+                self.dots_entered = true;
+            } else {
+                self.dots_y.set_target_position(target, 0.0);
+            }
+        }
+
         self.pending_events.push(serde_json::json!({
             "ev": "retarget",
             "reason": reason,
@@ -432,6 +516,7 @@ impl LyricPage {
             || self.scale.iter().any(|spring| !spring.arrived())
             || self.alpha_bright.iter().any(|tween| tween.animating(now))
             || self.alpha_dark.iter().any(|tween| tween.animating(now))
+            || !self.dots_y.arrived()
             || self.trace.is_some()
     }
 
@@ -522,6 +607,15 @@ impl Render for LyricPage {
             }
             self.layout_dirty = true;
         }
+        // 间奏消失(唱到下一行):非 seek 时圆点做 150ms 淡出(上游 dismiss)
+        if diff.is_interlude_changed
+            && let Some((opacity, dot_opacities, scale)) = self.last_dots_state.take()
+            && !diff.is_time_jumped
+            && opacity > 0.0
+        {
+            self.dots_dismiss = Some((self.position_ms, opacity, dot_opacities, scale));
+        }
+
         let playing_flipped = self.was_playing != self.playing;
         self.was_playing = self.playing;
 
@@ -541,6 +635,7 @@ impl Render for LyricPage {
                 for spring in &mut self.pos_y {
                     spring.update_params(patch, 0.0);
                 }
+                self.dots_y.update_params(patch, 0.0);
             }
             let reason = if !self.entered {
                 "rebuild-view"
@@ -559,6 +654,7 @@ impl Render for LyricPage {
         for spring in &mut self.pos_y {
             spring.update(delta);
         }
+        self.dots_y.update(delta);
         for spring in &mut self.scale {
             spring.update(delta);
         }
@@ -700,7 +796,7 @@ impl Render for LyricPage {
         let bottom_bound = self.container_height + OVERSCAN_PX + motion_buffer;
         let highlighted: &[usize] = self.timeline.highlighted();
 
-        let mut children = Vec::new();
+        let mut children: Vec<gpui_kit::AnyElement> = Vec::new();
         // 点击映射表:各行的可视纵带与其起始时间(行本体不再承载事件)
         let mut click_bands: Vec<(f64, f64, f64)> = Vec::new();
         for (index, line) in self.timeline.lines().iter().enumerate() {
@@ -760,8 +856,41 @@ impl Render for LyricPage {
                         scale as f32,
                         gpui::point(px(0.0), px(y as f32)),
                         gpui::point(px(0.0), px((line_box / 2.0) as f32)),
-                    )),
+                    ))
+                    .into_any_element(),
             );
+        }
+
+        // 间奏圆点行(上游 InterludeDotsEl):焦点在间奏且可展示时演出;
+        // 间奏被正常结束截断时做 150ms 淡出,seek 截断则立即消失
+        let dots_visible = self.timeline.focus_on_interlude() && self.timeline.can_display_interlude();
+        if dots_visible {
+            self.dots_dismiss = None;
+            let interlude = self.timeline.active_interlude().expect("focus 校验过");
+            let is_prelude = interlude.anchor == -1;
+            let entry = self.timeline.interlude_entry_ms();
+            let dots_timeline =
+                crate::dots::DotsTimeline::new(interlude.start_ms, interlude.end_ms, entry, is_prelude);
+            let snapshot = crate::dots::resolve_snapshot(&dots_timeline, self.position_ms);
+            if snapshot.active && dots_timeline.displayable() {
+                self.last_dots_state =
+                    Some((snapshot.opacity, snapshot.dot_opacities, snapshot.scale));
+                children.push(self.build_dots_element(
+                    snapshot.opacity,
+                    snapshot.scale,
+                    snapshot.dot_opacities,
+                ));
+            } else {
+                self.last_dots_state = None;
+            }
+        } else if let Some((start_ms, initial, dot_opacities, scale)) = self.dots_dismiss {
+            // 退场淡出期(150ms):行透明度衰减,三点保持截断时的状态
+            if self.position_ms < start_ms + crate::dots::DISMISS_FADE_MS {
+                let opacity = crate::dots::dismiss_opacity(self.position_ms, start_ms, initial);
+                children.push(self.build_dots_element(opacity, scale, dot_opacities));
+            } else {
+                self.dots_dismiss = None;
+            }
         }
 
         // 全窗口点击映射层:按点击纵坐标命中的可视行发起 seek
@@ -783,7 +912,8 @@ impl Render for LyricPage {
                             }
                         },
                     ),
-                ),
+                )
+                .into_any_element(),
         );
 
         div()
