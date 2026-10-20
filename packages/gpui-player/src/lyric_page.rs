@@ -831,8 +831,7 @@ impl Render for LyricPage {
             // 词元 span 布局:CJK 逐字/拉丁成组/空格零时长,逐 span 测宽排位
             let font = lyric_font();
             for (index, line) in self.timeline.lines().iter().enumerate() {
-                let atoms = crate::words::atomize(&line.words);
-                let mut spans = crate::words::group_spans(&atoms);
+                let mut spans = crate::words::build_spans(&line.words);
                 let mut x = 0.0;
                 for span in &mut spans {
                     let shared: SharedString = span.text.clone().into();
