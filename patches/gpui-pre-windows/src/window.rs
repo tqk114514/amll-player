@@ -632,9 +632,11 @@ impl Drop for WindowsWindow {
 }
 
 /// [AMLL patch] 完全遮挡检测(Chromium NativeWindowOcclusionTracker 的简化):
-/// 从本窗口起沿 z-order 向上遍历,剔除 cloak(其他虚拟桌面)与 alpha=0
-/// 的分层窗口,累计其余窗口对本窗口(经所在监视器裁剪)矩形的覆盖;
-/// 剩余可见面积 ≤ 0 即完全遮挡。无状态,逐帧成本微秒级。
+/// EnumWindows 按实践语义自顶向下枚举 z 序,出现在本窗口之前的即在其
+/// 之上;剔除 cloak(其他虚拟桌面)与 alpha=0 的分层窗口,累计其余
+/// 窗口对本窗口(经所在监视器裁剪)矩形的覆盖,剩余可见面积 ≤ 0 即
+/// 完全遮挡。(不用 GW_HWNDPREV 链:本机实测其方向与"取上方窗口"
+/// 的字面语义不符,被完全盖住时遍历不到遮挡者。)
 unsafe fn is_fully_occluded(handle: HWND) -> bool {
     // 本 crate deny(unsafe_op_in_unsafe_fn):FFI 调用需显式 unsafe 块
     unsafe {
@@ -642,42 +644,97 @@ unsafe fn is_fully_occluded(handle: HWND) -> bool {
         return false;
     };
     let total = rect_area(&self_rect);
-    let mut uncovered = total;
-    let mut other = GetWindow(handle, GW_HWNDPREV).ok();
-    let mut guard = 0;
-    while let Some(hwnd) = other && guard < 512 {
-        guard += 1;
-        let mut rect = RECT::default();
-        if IsWindowVisible(hwnd).as_bool()
-            && !is_cloaked(hwnd)
-            && is_opaque(hwnd)
-            && GetWindowRect(hwnd, &mut rect).is_ok()
-        {
-            uncovered -= intersect_area(&self_rect, &rect);
-            if uncovered <= 0.0 {
-                break;
-            }
-        }
-        other = GetWindow(hwnd, GW_HWNDPREV).ok();
-    }
-    // [AMLL patch] 判定翻转时输出遮盖率:判据为纯几何 + z 序(与本窗口
-    // 或其他窗口是否最大化无关),翻转日志供实测核对两个方向——
-    // 播放窗压在最大化窗口之上 → 不遮挡;任何窗口自上方盖满 → 遮挡
-    let occluded = uncovered <= 0.0;
+    let mut ctx = OcclusionContext {
+        me: handle,
+        self_rect,
+        uncovered: total,
+        found_self: false,
+        // 指认元凶用:遮盖面积最大的前几个窗口(仅翻转时才读标题)
+        contributors: [(HWND::default(), 0.0); 4],
+    };
+    let _ = EnumWindows(Some(occlusion_enum_proc), LPARAM(&mut ctx as *mut _ as isize));
+    let occluded = ctx.uncovered <= 0.0;
+    // [AMLL patch] 判定翻转时输出遮盖率与遮挡者(纯几何 + z 序,与是否
+    // 最大化无关):播放窗压在最大化窗口之上 → 不遮挡;任何窗口自上方
+    // 盖满 → 遮挡。翻转日志供实测核对
     thread_local! {
         static LAST_VERDICT: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
     }
     LAST_VERDICT.with(|last| {
         if last.get() != Some(occluded) {
             last.set(Some(occluded));
+            let total = rect_area(&ctx.self_rect);
+            let coverage = if total > 0.0 {
+                (total - ctx.uncovered) / total * 100.0
+            } else {
+                0.0
+            };
+            let mut describers = Vec::new();
+            if occluded {
+                for (hwnd, area) in ctx.contributors.iter() {
+                    if !hwnd.is_invalid() && *area > 0.0 {
+                        describers.push(format!(
+                            "[{}] {}({:.0}k px^2)",
+                            window_class_name(*hwnd),
+                            window_title(*hwnd),
+                            area / 1000.0
+                        ));
+                    }
+                }
+            }
             log::info!(
-                "[AMLL patch] 遮挡判定翻转: occluded={occluded}, 遮盖 {:.0}%",
-                if total > 0.0 { (total - uncovered) / total * 100.0 } else { 0.0 }
+                "[AMLL patch] 遮挡判定翻转: occluded={occluded}, 遮盖 {coverage:.0}%, 遮挡者: {}",
+                describers.join(" | ")
             );
         }
     });
     occluded
     }
+}
+
+/// EnumWindows 回调:见自身之前(之上)的窗口按遮挡累计;见到自身即停
+/// (其后枚举的窗口都在本窗口之下,不产生遮挡)
+unsafe extern "system" fn occlusion_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    unsafe {
+    let ctx = &mut *(lparam.0 as *mut OcclusionContext);
+    if hwnd == ctx.me {
+        ctx.found_self = true;
+        return FALSE;
+    }
+    if ctx.found_self {
+        return FALSE;
+    }
+    let mut rect = RECT::default();
+    if IsWindowVisible(hwnd).as_bool()
+        && !is_cloaked(hwnd)
+        && is_opaque(hwnd)
+        && GetWindowRect(hwnd, &mut rect).is_ok()
+    {
+        let area = intersect_area(&ctx.self_rect, &rect);
+        ctx.uncovered -= area;
+        let mut weakest = 0;
+        for (index, (_, known)) in ctx.contributors.iter().enumerate() {
+            if *known < ctx.contributors[weakest].1 {
+                weakest = index;
+            }
+        }
+        if area > ctx.contributors[weakest].1 {
+            ctx.contributors[weakest] = (hwnd, area);
+        }
+        if ctx.uncovered <= 0.0 {
+            return FALSE;
+        }
+    }
+    TRUE
+    }
+}
+
+struct OcclusionContext {
+    me: HWND,
+    self_rect: RECT,
+    uncovered: f64,
+    found_self: bool,
+    contributors: [(HWND, f64); 4],
 }
 
 /// 本窗口矩形与所在监视器区域的交集(离屏部分永不可能被盖住,不计入)
@@ -699,6 +756,32 @@ unsafe fn visible_rect_on_monitor(handle: HWND) -> Option<RECT> {
         right: rect.right.min(info.rcMonitor.right),
         bottom: rect.bottom.min(info.rcMonitor.bottom),
     })
+    }
+}
+
+/// 窗口标题(翻转日志指认元凶用)
+unsafe fn window_title(handle: HWND) -> String {
+    unsafe {
+    let mut buffer = [0u16; 128];
+    let len = GetWindowTextW(handle, &mut buffer);
+    if len > 0 {
+        String::from_utf16_lossy(&buffer[..len as usize])
+    } else {
+        String::new()
+    }
+    }
+}
+
+/// 窗口类名(翻转日志指认元凶用)
+unsafe fn window_class_name(handle: HWND) -> String {
+    unsafe {
+    let mut buffer = [0u16; 64];
+    let len = GetClassNameW(handle, &mut buffer);
+    if len > 0 {
+        String::from_utf16_lossy(&buffer[..len as usize])
+    } else {
+        String::new()
+    }
     }
 }
 
