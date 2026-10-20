@@ -1215,11 +1215,14 @@ float sprite_mask_gradient_alpha(float local_x, float4 gradient) {
     return lerp(gradient.z, gradient.w, t);
 }
 
-// [AMLL patch] 字形高斯模糊核:5×5 双线性网格、步长 σ=半径(CSS
-// filter: blur(Npx) 的参数 N 即高斯标准差,MDN:"它定义了高斯函数的
-// 标准偏差值")、固定权重(exp(-k²/2) 归一,总权重=1);tap 落在本
-// 字形瓦片矩形外取 0 贡献——卷积线性,Σ blur(字形)=blur(Σ 字形),
-// 瓦片外没有本字形的墨迹,置零恰为线性卷积的正确值。
+// [AMLL patch] 字形高斯模糊核:9×9 双线性网格、步长 σ/2、覆盖 ±2σ
+// (CSS filter: blur(Npx) 的参数 N 即高斯标准差,MDN:"它定义了高斯
+// 函数的标准偏差值");权重 exp(-(k/2)²/2) 归一,总权重=1。采样
+// 密度必须 ≤ σ/2——间距过宽(如按 σ 间距取 5 点)会把有效核变成
+// 梳状,高频能量漏出即为"磨砂玻璃"伪影;9×9 间距 σ/2 的密集采样
+// 才得到 Web 引擎的柔和钟形。tap 落在本字形瓦片矩形外取 0
+// 贡献——卷积线性,Σ blur(字形)=blur(Σ 字形),瓦片外没有本字形
+// 的墨迹,置零恰为线性卷积的正确值。
 // 输入 tile_position 为图集像素空间,采样时归一化。
 float3 blurred_glyph_rgb(float2 atlas_px, float blur_radius, float4 tile_rect) {
     float2 atlas_size;
@@ -1228,17 +1231,19 @@ float3 blurred_glyph_rgb(float2 atlas_px, float blur_radius, float4 tile_rect) {
     if (blur_radius < 0.05) {
         return direct;
     }
-    static const float W[5] = { 0.0544887, 0.2442013, 0.40262, 0.2442013, 0.0544887 };
+    // exp(-k²/8) for k=-4..4,归一化(总权重=1)
+    static const float W[9] = { 0.02762, 0.06629, 0.12380, 0.18017, 0.20417,
+                                0.18017, 0.12380, 0.06629, 0.02762 };
     float sigma = blur_radius;
     float3 acc = 0.0;
     [unroll]
-    for (int j = -2; j <= 2; j++) {
+    for (int j = -4; j <= 4; j++) {
         [unroll]
-        for (int i = -2; i <= 2; i++) {
-            float2 px = atlas_px + float2(i, j) * sigma;
+        for (int i = -4; i <= 4; i++) {
+            float2 px = atlas_px + float2(i, j) * (sigma * 0.5);
             if (px.x >= tile_rect.x && px.x <= tile_rect.x + tile_rect.z
                 && px.y >= tile_rect.y && px.y <= tile_rect.y + tile_rect.w) {
-                acc += W[i + 2] * W[j + 2] * t_sprite.Sample(s_sprite, px / atlas_size).rgb;
+                acc += W[i + 4] * W[j + 4] * t_sprite.Sample(s_sprite, px / atlas_size).rgb;
             }
         }
     }

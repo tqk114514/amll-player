@@ -39,7 +39,6 @@ use std::time::Instant;
 use amll_player_core::{AudioPlayerHandle, AudioThreadEvent, AudioThreadMessage};
 use gpui_kit::{
     Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
-    StatefulInteractiveElement,
     Render, SharedString, Size, Styled, FontWeight, Window, div, px, rgba,
 };
 
@@ -917,6 +916,33 @@ impl Render for LyricPage {
             window.request_animation_frame();
         }
 
+        // 5.5) 悬停锐化(上游 :hover filter: unset !important):逐帧
+        // 轮询窗口级 hover(平台 WM_MOUSELEAVE 维护,比元素级 on_hover
+        // 事件可靠——后者丢事件会让状态永久卡死);翻转时重定目标
+        // 全部行,过渡仍走 filter .4s ease 补间
+        let hovered_now = window.is_window_hovered();
+        if hovered_now != self.hovered {
+            self.hovered = hovered_now;
+            let count = self.timeline.lines().len();
+            let scroll_to = self.timeline.scroll_to_index();
+            let latest = self
+                .timeline
+                .latest_highlighted()
+                .unwrap_or(scroll_to);
+            let highlighted: &[usize] = self.timeline.highlighted();
+            for index in 0..count {
+                let active = highlighted.contains(&index)
+                    || (index >= scroll_to && index < latest);
+                let target = self.blur_level(index, true, active);
+                self.blur_px[index].retarget_eased(
+                    target,
+                    now,
+                    LINE_BLUR_TRANSITION_SEC,
+                    TweenEasing::Ease,
+                );
+            }
+        }
+
         // 6) trace 记录(事件 + 逐帧;先做不可变快照,再进可变借用)
         let trace_snapshot = self.trace.is_some().then(|| {
             let count = self.timeline.lines().len();
@@ -1209,32 +1235,6 @@ impl Render for LyricPage {
             .relative()
             .size_full()
             .bg(rgba(0x0a0a0cff))
-            .on_hover(cx.listener(
-                move |this: &mut LyricPage, is_hovered: &bool, _window, cx| {
-                    if this.hovered == *is_hovered {
-                        return;
-                    }
-                    this.hovered = *is_hovered;
-                    // 悬停翻转:立即重定目标全部行(上游 :hover 规则;
-                    // 过渡仍走 filter .4s ease 补间)
-                    let now = Instant::now();
-                    let count = this.timeline.lines().len();
-                    for index in 0..count {
-                        let active = this
-                            .timeline
-                            .highlighted()
-                            .contains(&index);
-                        let target = this.blur_level(index, true, active);
-                        this.blur_px[index].retarget_eased(
-                            target,
-                            now,
-                            LINE_BLUR_TRANSITION_SEC,
-                            TweenEasing::Ease,
-                        );
-                    }
-                    cx.notify();
-                },
-            ))
             .children(children)
     }
 }
