@@ -69,7 +69,10 @@ Rust 侧逐字节一致);`quad_vertex` 顶点经 `to_device_position_transformed
 累计检测(Chromium NativeWindowOcclusionTracker 的简化)——自本窗口
 向上遍历 z 序,剔除 cloak(其他虚拟桌面)与 alpha=0 的分层窗口,
 累计其余窗口对本窗口(经所在监视器裁剪)矩形的覆盖,剩余可见
-面积 ≤ 0 即完全遮挡。判据为纯几何 + z 序,与是否最大化无关
+面积 ≤ 0 即完全遮挡。检测对象必须是可见主窗口 `hwnd`——
+`platform_window_handle` 是 platform.rs 创建的隐藏系统广播窗口
+(WS_EX_TOOLWINDOW,0×0,z 序底部),误用时判定退化为"屏幕原点被盖
+没有",任何最大化应用都会误判遮挡。判据为纯几何 + z 序,与是否最大化无关
 (最大化窗口在播放窗之下时根本不在遍历链上);无状态,逐帧成本
 微秒级,判定翻转时 log::info 输出遮盖率供实测核对。配合 gpui-pre 的
 帧率策略:仅最小化/完全遮挡才降频,失焦可见全速。
