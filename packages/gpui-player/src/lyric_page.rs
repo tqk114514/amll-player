@@ -20,6 +20,8 @@
 //!      反演回落(playbackRate=-1)
 //! - 逐词揭示:上游 mask-image 线性渐变 → 精灵像素渐变(patch),带内
 //!   逐像素线性插值、无阶梯近似;blur 是 Phase 2
+//! - 行模糊(Phase 2):上游 filter: blur 逐字形像素级高斯(patch),
+//!   resolveBlurLevel 档位 + .4s ease 补间;:hover 悬停期间全部锐化
 //! - 间奏:圆点行占位 spacer 已按上游参与布局;圆点演出为容器整体
 //!   `transform-origin: center` 的缩放呼吸/两段退场——三颗 SDF 几何圆
 //!   (quad 圆角=半径)经绘制期矩阵缩放(本地 patch:quad 携带变换,
@@ -37,6 +39,7 @@ use std::time::Instant;
 use amll_player_core::{AudioPlayerHandle, AudioThreadEvent, AudioThreadMessage};
 use gpui_kit::{
     Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
+    StatefulInteractiveElement,
     Render, SharedString, Size, Styled, FontWeight, Window, div, px, rgba,
 };
 
@@ -254,6 +257,9 @@ pub struct LyricPage {
     float_phase: Vec<crate::words::FloatPhase>,
     /// 各行模糊半径补间(上游 filter: blur .4s ease;单位逻辑像素)
     blur_px: Vec<AlphaTween>,
+    /// 鼠标悬停在播放器上(上游 :hover .amll-lyric-player 规则:
+    /// filter: unset !important——悬停期间全部行锐化)
+    hovered: bool,
     /// 退激活期间的遮罩冻结时刻(上游 maskAnimator.pause();alpha 补间
     /// 收敛后清除)
     mask_frozen: Vec<Option<f64>>,
@@ -339,6 +345,7 @@ impl LyricPage {
             prev_active: vec![false; count],
             float_phase: vec![crate::words::FloatPhase::Active; count],
             blur_px: (0..count).map(|_| AlphaTween::new(0.0)).collect(),
+            hovered: false,
             mask_frozen: vec![None; count],
             word_spans: (0..count).map(|_| Vec::new()).collect(),
             entered: false,
@@ -657,6 +664,10 @@ impl LyricPage {
     /// 上游 resolveBlurLevel:触摸滚动期间与焦点行不模糊,
     /// 视口外最大档,其余按距焦点行距 1+distance,窄视口 ×0.8,封顶 5
     fn blur_level(&self, index: usize, in_viewport: bool, active: bool) -> f64 {
+        // 上游 :hover 规则 filter: unset !important:悬停期间全部锐化
+        if self.hovered {
+            return 0.0;
+        }
         if self.is_touch_scrolled {
             return 0.0;
         }
@@ -1198,6 +1209,32 @@ impl Render for LyricPage {
             .relative()
             .size_full()
             .bg(rgba(0x0a0a0cff))
+            .on_hover(cx.listener(
+                move |this: &mut LyricPage, is_hovered: &bool, _window, cx| {
+                    if this.hovered == *is_hovered {
+                        return;
+                    }
+                    this.hovered = *is_hovered;
+                    // 悬停翻转:立即重定目标全部行(上游 :hover 规则;
+                    // 过渡仍走 filter .4s ease 补间)
+                    let now = Instant::now();
+                    let count = this.timeline.lines().len();
+                    for index in 0..count {
+                        let active = this
+                            .timeline
+                            .highlighted()
+                            .contains(&index);
+                        let target = this.blur_level(index, true, active);
+                        this.blur_px[index].retarget_eased(
+                            target,
+                            now,
+                            LINE_BLUR_TRANSITION_SEC,
+                            TweenEasing::Ease,
+                        );
+                    }
+                    cx.notify();
+                },
+            ))
             .children(children)
     }
 }

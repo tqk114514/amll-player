@@ -83,7 +83,8 @@ Rust 侧逐字节一致);`quad_vertex` 顶点经 `to_device_position_transformed
 `pad` 改读为 `blur_radius`(f32 位模式,布局不变)。顶点按 3σ=
 1.5×半径外扩四边形给光晕留地(裁剪随之),图集采样坐标改为像素
 空间并把外扩映射到瓦片外缘,渐变 local_x 仍锚定原始 bounds;
-片元 `blurred_glyph_rgb`:5×5 双线性网格、步长 σ=半径/2、固定权重
+片元 `blurred_glyph_rgb`:5×5 双线性网格、步长 σ=半径(CSS blur() 的参数即
+高斯标准差,MDN:"它定义了高斯函数的标准偏差值")、固定权重
 (exp(-k²/2) 归一,总权重=1),tap 落在本字形瓦片矩形外取 0——
 卷积线性,Σ blur(字形)=blur(Σ 字形),与 CSS filter: blur 逐像素
 等价。半径 <0.05 走原单采样快速路径,未启用模糊的 UI 零成本。

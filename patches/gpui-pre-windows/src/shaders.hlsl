@@ -1215,10 +1215,11 @@ float sprite_mask_gradient_alpha(float local_x, float4 gradient) {
     return lerp(gradient.z, gradient.w, t);
 }
 
-// [AMLL patch] 字形高斯模糊核:5×5 双线性网格、步长 σ=半径/2、固定
-// 权重(exp(-k²/2) 归一,总权重=1);tap 落在本字形瓦片矩形外取 0
-// 贡献——卷积线性,Σ blur(字形)=blur(Σ 字形),瓦片外没有本字形的
-// 墨迹,置零恰为线性卷积的正确值。CSS filter: blur() 的像素级等价。
+// [AMLL patch] 字形高斯模糊核:5×5 双线性网格、步长 σ=半径(CSS
+// filter: blur(Npx) 的参数 N 即高斯标准差,MDN:"它定义了高斯函数的
+// 标准偏差值")、固定权重(exp(-k²/2) 归一,总权重=1);tap 落在本
+// 字形瓦片矩形外取 0 贡献——卷积线性,Σ blur(字形)=blur(Σ 字形),
+// 瓦片外没有本字形的墨迹,置零恰为线性卷积的正确值。
 // 输入 tile_position 为图集像素空间,采样时归一化。
 float3 blurred_glyph_rgb(float2 atlas_px, float blur_radius, float4 tile_rect) {
     float2 atlas_size;
@@ -1228,7 +1229,7 @@ float3 blurred_glyph_rgb(float2 atlas_px, float blur_radius, float4 tile_rect) {
         return direct;
     }
     static const float W[5] = { 0.0544887, 0.2442013, 0.40262, 0.2442013, 0.0544887 };
-    float sigma = blur_radius / 2.0;
+    float sigma = blur_radius;
     float3 acc = 0.0;
     [unroll]
     for (int j = -2; j <= 2; j++) {
@@ -1248,11 +1249,11 @@ MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexI
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     uint sprite_id = batch_start_index + instance_id;
     MonochromeSprite sprite = mono_sprites[sprite_id];
-    // [AMLL patch] 模糊:四边形按 3σ=1.5×半径外扩给光晕留地;
-    // 裁剪测试用外扩后的绘制矩形(光晕须能穿过遮罩);
+    // [AMLL patch] 模糊:四边形按 3σ=3×半径外扩给光晕留地(σ=半径,
+    // 见 blurred_glyph_rgb 注释);裁剪测试用外扩后的绘制矩形;
     // 渐变 local_x 仍锚定原始 bounds(外扩不应平移遮罩带)
     float blur_radius = sprite.blur_radius;
-    float blur_extent = 1.5 * blur_radius;
+    float blur_extent = 3.0 * blur_radius;
     Bounds draw_bounds = sprite.bounds;
     if (blur_radius > 0.05) {
         draw_bounds.origin = sprite.bounds.origin - float2(blur_extent, blur_extent);
