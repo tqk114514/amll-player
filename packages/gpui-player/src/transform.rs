@@ -14,7 +14,7 @@
 
 use gpui::{
     App, AnyElement, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Point, TransformationMatrix, Window, px,
+    LayoutId, Pixels, Point, TransformationMatrix, Window, point, px,
 };
 
 /// 对子元素应用"绕指定点缩放 + 平移"的包装元素。
@@ -191,6 +191,109 @@ impl Element for BlurElement {
 }
 
 impl IntoElement for BlurElement {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+/// 矩阵平移的圆角矩形(行悬停框等静态几何随行动画的载体)。
+///
+/// 本地几何恒定(0,0,w,h),每帧仅矩阵 translate 变化——quad 的
+/// snap_bounds 像素吸附在变换作用域内被跳过,亚像素平移平滑
+/// (与 ScaledElement 同一机制)。颜色含 alpha 由调用方补间。
+pub struct TranslatedQuadElement {
+    width: f64,
+    height: f64,
+    radius: f64,
+    color: gpui::Hsla,
+    translate_y: f64,
+}
+
+impl TranslatedQuadElement {
+    pub fn new(width: f64, height: f64, radius: f64, color: gpui::Hsla, translate_y: f64) -> Self {
+        Self {
+            width,
+            height,
+            radius,
+            color,
+            translate_y,
+        }
+    }
+}
+
+impl Element for TranslatedQuadElement {
+    type RequestLayoutState = ();
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        // 仅作绘制载体:几何全部经矩阵应用,元素自身占位 0×0
+        (window.request_layout(gpui::Style::default(), [], cx), ())
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> Self::PrepaintState {
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        _cx: &mut App,
+    ) {
+        let scale_factor = window.scale_factor();
+        let matrix = TransformationMatrix {
+            rotation_scale: [[1.0, 0.0], [0.0, 1.0]],
+            translation: [0.0, (self.translate_y * scale_factor as f64) as f32],
+        };
+        let bounds = Bounds {
+            origin: point(px(0.0), px(0.0)),
+            size: gpui::size(
+                px(self.width as f32),
+                px(self.height as f32),
+            ),
+        };
+        let radius = px(self.radius as f32);
+        window.with_element_transformation(matrix, |window| {
+            window.paint_quad(gpui::quad(
+                bounds,
+                gpui::Corners::all(radius),
+                self.color,
+                gpui::Edges::default(),
+                gpui::transparent_black(),
+                gpui::BorderStyle::default(),
+            ));
+        });
+    }
+}
+
+impl IntoElement for TranslatedQuadElement {
     type Element = Self;
 
     fn into_element(self) -> Self::Element {

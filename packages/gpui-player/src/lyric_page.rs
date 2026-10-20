@@ -22,6 +22,8 @@
 //!   逐像素线性插值、无阶梯近似;blur 是 Phase 2
 //! - 行模糊(Phase 2):上游 filter: blur 逐字形像素级高斯(patch),
 //!   resolveBlurLevel 档位 + .4s ease 补间;:hover 悬停期间全部锐化
+//! - 行悬停框(Phase 2):上游 wrapper :hover #fff1 / :active #ffffff05,
+//!   .25em 圆角,background-color .25s ease;矩阵平移跟随行
 //! - 间奏:圆点行占位 spacer 已按上游参与布局;圆点演出为容器整体
 //!   `transform-origin: center` 的缩放呼吸/两段退场——三颗 SDF 几何圆
 //!   (quad 圆角=半径)经绘制期矩阵缩放(本地 patch:quad 携带变换,
@@ -85,6 +87,14 @@ const LINE_OPACITY_HIGHLIGHTED: f64 = 0.85;
 const LINE_OPACITY_TRANSITION_SEC: f64 = 0.4;
 /// 行模糊的 CSS transition:`transition: filter .4s`(默认 ease)
 const LINE_BLUR_TRANSITION_SEC: f64 = 0.4;
+/// 行悬停框的 CSS transition:`transition: background-color .25s`(默认 ease)
+const HOVER_BG_TRANSITION_SEC: f64 = 0.25;
+/// 悬停框颜色:上游 --amll-lp-hover-bg-color 默认 #fff1(白 17/255)
+const HOVER_BG_ALPHA: f64 = 17.0 / 255.0;
+/// 按下态:上游 :active #ffffff05(白 5/255)
+const HOVER_BG_ACTIVE_ALPHA: f64 = 5.0 / 255.0;
+/// 悬停框圆角:上游 wrapper border-radius .25em
+const HOVER_BG_RADIUS_EM: f64 = 0.25;
 
 /// 排版原因(上游 LayoutReason)。策略映射(上游 consts.ts):
 /// stagger 仅正常播放开启;直贴 Y(snapPosY)仅连续滚动(触摸拖动跟手),
@@ -259,6 +269,10 @@ pub struct LyricPage {
     /// 鼠标悬停在播放器上(上游 :hover .amll-lyric-player 规则:
     /// filter: unset !important——悬停期间全部行锐化)
     hovered: bool,
+    /// 鼠标左键按下(行悬停框的 :active 态)
+    mouse_down: bool,
+    /// 各行悬停框 alpha 补间(上游 background-color .25s ease)
+    hover_bg: Vec<AlphaTween>,
     /// 退激活期间的遮罩冻结时刻(上游 maskAnimator.pause();alpha 补间
     /// 收敛后清除)
     mask_frozen: Vec<Option<f64>>,
@@ -345,6 +359,8 @@ impl LyricPage {
             float_phase: vec![crate::words::FloatPhase::Active; count],
             blur_px: (0..count).map(|_| AlphaTween::new(0.0)).collect(),
             hovered: false,
+            mouse_down: false,
+            hover_bg: (0..count).map(|_| AlphaTween::new(0.0)).collect(),
             mask_frozen: vec![None; count],
             word_spans: (0..count).map(|_| Vec::new()).collect(),
             entered: false,
@@ -708,6 +724,7 @@ impl LyricPage {
             || self.alpha_dark.iter().any(|tween| tween.animating(now))
             || self.line_opacity.iter().any(|tween| tween.animating(now))
             || self.blur_px.iter().any(|tween| tween.animating(now))
+            || self.hover_bg.iter().any(|tween| tween.animating(now))
             || self
                 .float_phase
                 .iter()
@@ -919,8 +936,20 @@ impl Render for LyricPage {
         // 5.5) 悬停锐化(上游 :hover filter: unset !important):逐帧
         // 轮询窗口级 hover(平台 WM_MOUSELEAVE 维护,比元素级 on_hover
         // 事件可靠——后者丢事件会让状态永久卡死);翻转时重定目标
-        // 全部行,过渡仍走 filter .4s ease 补间
+        // 全部行,过渡仍走 filter .4s ease 补间。
+        // 同时按鼠标纵坐标命中行,驱动行悬停框(wrapper :hover #fff1 /
+        // :active #ffffff05,background-color .25s ease)
         let hovered_now = window.is_window_hovered();
+        let line_total_h = self.font_size * LINE_TOTAL_EM;
+        let hover_row = if hovered_now {
+            let mouse_y = (window.mouse_position().y / px(1.0)) as f64;
+            (0..self.timeline.lines().len()).find(|&index| {
+                let y = self.pos_y[index].current_position();
+                mouse_y >= y && mouse_y < y + line_total_h
+            })
+        } else {
+            None
+        };
         if hovered_now != self.hovered {
             self.hovered = hovered_now;
             let count = self.timeline.lines().len();
@@ -938,6 +967,27 @@ impl Render for LyricPage {
                     target,
                     now,
                     LINE_BLUR_TRANSITION_SEC,
+                    TweenEasing::Ease,
+                );
+            }
+        }
+        // 行悬停框:命中行 → #fff1(按下时 #ffffff05),其余归零
+        if hovered_now || self.hover_bg.iter().any(|t| t.to > 0.0) || hover_row.is_some() {
+            for index in 0..self.timeline.lines().len() {
+                let target = match (hover_row, self.mouse_down) {
+                    (Some(row), _) if row == index => {
+                        if self.mouse_down {
+                            HOVER_BG_ACTIVE_ALPHA
+                        } else {
+                            HOVER_BG_ALPHA
+                        }
+                    }
+                    _ => 0.0,
+                };
+                self.hover_bg[index].retarget_eased(
+                    target,
+                    now,
+                    HOVER_BG_TRANSITION_SEC,
                     TweenEasing::Ease,
                 );
             }
@@ -1104,6 +1154,22 @@ impl Render for LyricPage {
                 self.mask_frozen[index],
                 self.float_phase[index],
             );
+            // 行悬停框(上游 wrapper :hover):全宽圆角框,经矩阵
+            // 平移跟随行(quad 变换作用域内不做像素吸附,亚像素平滑)
+            let box_alpha = self.hover_bg[index].sample(now);
+            if box_alpha > 0.001 {
+                children.push(
+                    crate::transform::TranslatedQuadElement::new(
+                        self.container_width,
+                        line_total,
+                        font * HOVER_BG_RADIUS_EM,
+                        gpui::hsla(0.0, 0.0, 1.0, box_alpha as f32),
+                        y,
+                    )
+                    .into_any_element(),
+                );
+            }
+
             // 静态文字层:位置恒为 (内缩 1em, 上留白 0.4em)
             let text_element = div()
                 .absolute()
@@ -1217,6 +1283,7 @@ impl Render for LyricPage {
                     MouseButton::Left,
                     cx.listener(
                         move |this: &mut LyricPage, event: &gpui::MouseDownEvent, _window, _cx| {
+                            this.mouse_down = true;
                             let click_y = (event.position.y / px(1.0)) as f64;
                             for (top, bottom, start_ms) in &click_bands {
                                 if click_y >= *top && click_y < *bottom {
@@ -1226,6 +1293,15 @@ impl Render for LyricPage {
                             }
                         },
                     ),
+                )
+                .on_mouse_up(
+                    MouseButton::Left,
+                    cx.listener(move |this: &mut LyricPage, _event: &gpui::MouseUpEvent, _window, cx| {
+                        if this.mouse_down {
+                            this.mouse_down = false;
+                            cx.notify();
+                        }
+                    }),
                 )
                 .into_any_element(),
         );

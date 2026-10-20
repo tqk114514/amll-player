@@ -1,12 +1,12 @@
-fix(gpui): 行模糊观感二修——9×9 密集采样核 + 悬停改窗口级轮询
+feat(gpui): 行悬停框——上游 wrapper :hover/:active 背景样式
 
-- "老式玻璃"伪影根因:5×5 核采样间距=σ 太稀疏,有效核呈梳状、
-  高频能量漏出。改 9×9 密集采样:间距 σ/2、覆盖 ±2σ、权重
-  exp(-(k/2)²/2) 归一——有效核为平滑钟形,即 Web 引擎的柔和模糊;
-  焦点行/无模糊 UI 仍走单采样快速路径
-- 悬停移出不恢复模糊(概率复现):元素级 on_hover 事件丢失会让
-  hovered 永久卡死。改逐帧轮询 window.is_window_hovered()(平台
-  WM_MOUSELEAVE 维护的事实源),丢事件也能在下一帧自愈
-- 验证:遮挡日志正确指认冒烟窗被 Qoder 完全遮挡(769k px²)
-  → 30fps 降频;激活到前台 92fps(基线 ~115),密集核代价 ~20%
-  且只在暗行生效;48 测试全绿
+上游 .FmKaba_lyricLineWrapper 的悬停装饰(此前遗漏):
+- :hover → background #fff1(白 17/255),.25s ease 过渡
+- :active(按住)→ #ffffff05(白 5/255)
+- 全宽 .25em 圆角框,随行移动
+
+实现:TranslatedQuadElement(本地几何恒定,矩阵平移跟随行——
+quad 变换作用域内跳过 snap_bounds 像素吸附,亚像素平滑);
+每帧按鼠标纵坐标命中行(窗口级 hover 轮询同源,无事件丢失);
+mouse_down/on_mouse_up 驱动按下态。悬停框不参与行模糊
+(上游 :hover 期间 filter: unset,两者互斥,与实现一致)。
