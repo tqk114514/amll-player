@@ -14,7 +14,7 @@
 
 use gpui::{
     App, AnyElement, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Point, TransformationMatrix, Window,
+    LayoutId, Pixels, Point, TransformationMatrix, Window, px,
 };
 
 /// 对子元素应用"绕指定点缩放 + 平移"的包装元素。
@@ -114,6 +114,83 @@ impl Element for ScaledElement {
 }
 
 impl IntoElement for ScaledElement {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+/// 模糊作用域包装元素:子元素的绘制在 `with_element_blur` 内完成
+/// (patch:字形像素级高斯模糊,CSS `filter: blur()` 的原生等价)。
+/// `radius` 为逻辑像素;0 时零额外开销(着色器快速路径)。
+pub struct BlurElement {
+    inner: AnyElement,
+    radius: f64,
+}
+
+impl BlurElement {
+    pub fn new(inner: impl IntoElement, radius: f64) -> Self {
+        Self {
+            inner: inner.into_any_element(),
+            radius,
+        }
+    }
+}
+
+impl Element for BlurElement {
+    type RequestLayoutState = LayoutId;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        let layout_id = self.inner.request_layout(window, cx);
+        (layout_id, layout_id)
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        request_layout: &mut Self::RequestLayoutState,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self::PrepaintState {
+        self.inner.prepaint(window, cx);
+        let _ = window.layout_bounds(*request_layout);
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        window.with_element_blur(px(self.radius as f32), |window| {
+            self.inner.paint(window, cx);
+        });
+    }
+}
+
+impl IntoElement for BlurElement {
     type Element = Self;
 
     fn into_element(self) -> Self::Element {

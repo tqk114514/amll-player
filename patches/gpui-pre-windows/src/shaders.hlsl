@@ -1164,7 +1164,9 @@ float4 underline_fragment(UnderlineFragmentInput input): SV_Target {
 
 struct MonochromeSprite {
     uint order;
-    uint pad;
+    // [AMLL patch] 原 pad:字形高斯模糊半径(设备像素,f32 位模式按
+    // float 读;0 = 不模糊)。CSS filter: blur 的像素级等价
+    float blur_radius;
     Bounds bounds;
     Bounds content_mask;
     Hsla color;
@@ -1186,6 +1188,10 @@ struct MonochromeSpriteVertexOutput {
     // 语义一致)+ 渐变参数(每精灵恒定)
     float local_x: TEXCOORD0;
     nointerpolation float4 mask_gradient: TEXCOORD1;
+    // [AMLL patch] 模糊:半径(设备像素)与本字形瓦片矩形
+    // (图集像素:origin.xy size.xy)
+    nointerpolation float blur_radius: TEXCOORD2;
+    nointerpolation float4 tile_rect: TEXCOORD3;
 };
 
 struct MonochromeSpriteFragmentInput {
@@ -1195,6 +1201,8 @@ struct MonochromeSpriteFragmentInput {
     float4 clip_distance: SV_ClipDistance;
     float local_x: TEXCOORD0;
     nointerpolation float4 mask_gradient: TEXCOORD1;
+    nointerpolation float blur_radius: TEXCOORD2;
+    nointerpolation float4 tile_rect: TEXCOORD3;
 };
 
 StructuredBuffer<MonochromeSprite> mono_sprites: register(t1);
@@ -1207,31 +1215,78 @@ float sprite_mask_gradient_alpha(float local_x, float4 gradient) {
     return lerp(gradient.z, gradient.w, t);
 }
 
+// [AMLL patch] 字形高斯模糊核:5×5 双线性网格、步长 σ=半径/2、固定
+// 权重(exp(-k²/2) 归一,总权重=1);tap 落在本字形瓦片矩形外取 0
+// 贡献——卷积线性,Σ blur(字形)=blur(Σ 字形),瓦片外没有本字形的
+// 墨迹,置零恰为线性卷积的正确值。CSS filter: blur() 的像素级等价。
+// 输入 tile_position 为图集像素空间,采样时归一化。
+float3 blurred_glyph_rgb(float2 atlas_px, float blur_radius, float4 tile_rect) {
+    float2 atlas_size;
+    t_sprite.GetDimensions(atlas_size.x, atlas_size.y);
+    float3 direct = t_sprite.Sample(s_sprite, atlas_px / atlas_size).rgb;
+    if (blur_radius < 0.05) {
+        return direct;
+    }
+    static const float W[5] = { 0.0544887, 0.2442013, 0.40262, 0.2442013, 0.0544887 };
+    float sigma = blur_radius / 2.0;
+    float3 acc = 0.0;
+    [unroll]
+    for (int j = -2; j <= 2; j++) {
+        [unroll]
+        for (int i = -2; i <= 2; i++) {
+            float2 px = atlas_px + float2(i, j) * sigma;
+            if (px.x >= tile_rect.x && px.x <= tile_rect.x + tile_rect.z
+                && px.y >= tile_rect.y && px.y <= tile_rect.y + tile_rect.w) {
+                acc += W[i + 2] * W[j + 2] * t_sprite.Sample(s_sprite, px / atlas_size).rgb;
+            }
+        }
+    }
+    return acc;
+}
+
 MonochromeSpriteVertexOutput monochrome_sprite_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
     float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
     uint sprite_id = batch_start_index + instance_id;
     MonochromeSprite sprite = mono_sprites[sprite_id];
+    // [AMLL patch] 模糊:四边形按 3σ=1.5×半径外扩给光晕留地;
+    // 裁剪测试用外扩后的绘制矩形(光晕须能穿过遮罩);
+    // 渐变 local_x 仍锚定原始 bounds(外扩不应平移遮罩带)
+    float blur_radius = sprite.blur_radius;
+    float blur_extent = 1.5 * blur_radius;
+    Bounds draw_bounds = sprite.bounds;
+    if (blur_radius > 0.05) {
+        draw_bounds.origin = sprite.bounds.origin - float2(blur_extent, blur_extent);
+        draw_bounds.size = sprite.bounds.size + 2.0 * float2(blur_extent, blur_extent);
+    }
     float4 device_position =
-        to_device_position_transformed(unit_vertex, sprite.bounds, sprite.transformation);
+        to_device_position_transformed(unit_vertex, draw_bounds, sprite.transformation);
     // [AMLL patch] 文字精灵的 content_mask 在绘制空间(与 bounds 同空间)定义,
     // 裁剪测试必须在局部空间做:变换后的位置 vs 未变换遮罩会把处于
     // with_element_transformation 作用域内的被遮罩文字全部裁空。
-    float4 clip_distance = distance_from_clip_rect(unit_vertex, sprite.bounds, sprite.content_mask);
-    float2 tile_position = to_tile_position(unit_vertex, sprite.tile);
+    float4 clip_distance = distance_from_clip_rect(unit_vertex, draw_bounds, sprite.content_mask);
+    // [AMLL patch] 图集采样坐标:外扩四边形映射到瓦片外扩 extent 的
+    // 图集像素空间(模糊核在此坐标系内偏移;无模糊时 extent=0,
+    // 退化为原 to_tile_position 的像素值)
+    float2 tile_position_px =
+        float2(sprite.tile.bounds.origin) + unit_vertex * float2(sprite.tile.bounds.size)
+        + (unit_vertex * 2.0 - 1.0) * float2(blur_extent, blur_extent);
     float4 color = hsla_to_rgba(sprite.color);
 
     MonochromeSpriteVertexOutput output;
     output.position = device_position;
-    output.tile_position = tile_position;
+    output.tile_position = tile_position_px;
     output.color = color;
     output.clip_distance = clip_distance;
     output.local_x = sprite.bounds.origin.x + unit_vertex.x * sprite.bounds.size.x;
     output.mask_gradient = sprite.gradient;
+    output.blur_radius = blur_radius;
+    output.tile_rect = float4(float2(sprite.tile.bounds.origin), float2(sprite.tile.bounds.size));
     return output;
 }
 
 float4 monochrome_sprite_fragment(MonochromeSpriteFragmentInput input): SV_Target {
-    float sample = t_sprite.Sample(s_sprite, input.tile_position).r;
+    // [AMLL patch] tile_position 为图集像素空间;模糊核内部负责归一化采样
+    float sample = blurred_glyph_rgb(input.tile_position, input.blur_radius, input.tile_rect).r;
     float alpha_corrected = apply_contrast_and_gamma_correction(sample, input.color.rgb, grayscale_enhanced_contrast, gamma_ratios);
     float mask_alpha = sprite_mask_gradient_alpha(input.local_x, input.mask_gradient);
     return float4(input.color.rgb, input.color.a * alpha_corrected * mask_alpha);
@@ -1242,7 +1297,7 @@ MonochromeSpriteVertexOutput subpixel_sprite_vertex(uint vertex_id: SV_VertexID,
 }
 
 SubpixelSpriteFragmentOutput subpixel_sprite_fragment(MonochromeSpriteFragmentInput input) {
-    float3 sample = t_sprite.Sample(s_sprite, input.tile_position).rgb;
+    float3 sample = blurred_glyph_rgb(input.tile_position, input.blur_radius, input.tile_rect);
     if (is_bgr) {
         sample = sample.bgr;
     }

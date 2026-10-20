@@ -755,6 +755,9 @@ impl Default for SpriteGradient {
 #[expect(missing_docs)]
 pub struct MonochromeSprite {
     pub order: DrawOrder,
+    /// [AMLL patch] 复用对齐填充位:单色字形的高斯模糊半径(f32 位模式,
+    /// 设备像素;0 = 不模糊)。CSS filter: blur 的像素级等价——卷积线性,
+    /// 逐字形模糊之和 = 整层模糊,结构体尺寸不变
     pub pad: u32,
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,
@@ -776,6 +779,7 @@ impl From<MonochromeSprite> for Primitive {
 #[expect(missing_docs)]
 pub struct SubpixelSprite {
     pub order: DrawOrder,
+    /// [AMLL patch] 同 MonochromeSprite::pad:模糊半径 f32 位模式
     pub pad: u32, // align to 8 bytes
     pub bounds: Bounds<ScaledPixels>,
     pub content_mask: ContentMask<ScaledPixels>,

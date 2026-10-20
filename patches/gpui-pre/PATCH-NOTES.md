@@ -82,6 +82,18 @@ bright …, dark …)`:合成器把文字内容逐像素乘以渐变遮罩 alpha
    仍全速渲染(音乐播放器常驻后台需保持流畅);输入高频例外与
    热节流分支保留,窗体 `active` 字段不再被帧循环消费。
 
+## 变更点(五):字形高斯模糊作用域(CSS filter: blur 等价)
+
+`src/window.rs`(带 `[AMLL patch]` 注释):新增 `with_element_blur(
+blur_radius, f)` 与 `element_blur()`(与 with_element_transformation
+同构的绘制期作用域;逻辑像素入栈时换算设备像素,嵌套内层优先)。
+`paint_glyph`/`paint_svg` 把当前半径以 f32 位模式写入精灵的 `pad`
+对齐填充位——结构体尺寸零变更(128 守卫测试原样有效)。
+
+数学依据:高斯卷积线性,blur(Σ字形)=Σblur(字形),逐字形模糊与
+整层模糊等价;字形光晕仅来自自身瓦片内墨迹,瓦片外采样置零恰为
+线性卷积的正确贡献——无需离屏层与分离模糊两趟,无降级近似。
+
 ## 已知边界
 
 - `paint_emoji` 走 `PolychromeSprite`(全彩图元,无变换字段),

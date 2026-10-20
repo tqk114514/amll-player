@@ -1243,6 +1243,9 @@ pub struct Window {
     pub(crate) element_transformation: TransformationMatrix,
     /// [AMLL patch] 当前元素遮罩渐变栈(绘制期作用域,内层覆盖外层)
     pub(crate) element_mask_gradient_stack: Vec<SpriteGradient>,
+    /// [AMLL patch] 当前元素模糊半径(设备像素;CSS filter: blur 等价,
+    /// 0 = 不模糊)
+    pub(crate) element_blur_radius: f32,
     pub(crate) content_mask_stack: Vec<ContentMask<Pixels>>,
     pub(crate) requested_autoscroll: Option<Bounds<Pixels>>,
     /// The [`TextInputConfiguration`] most recently forwarded to the platform
@@ -2160,6 +2163,7 @@ impl Window {
             element_opacity: 1.0,
             element_transformation: TransformationMatrix::unit(),
             element_mask_gradient_stack: Vec::new(),
+            element_blur_radius: 0.0,
             requested_autoscroll: None,
             last_text_input_configuration: None,
             focused_text_input_active: false,
@@ -4305,6 +4309,31 @@ impl Window {
             .unwrap_or(SpriteGradient::IDENTITY)
     }
 
+    /// [AMLL patch] 在模糊作用域内绘制:作用域内绘制的字形精灵由
+    /// 平台渲染器在像素着色器中按该半径做高斯模糊——CSS
+    /// `filter: blur()` 的原生等价(卷积线性,逐字形模糊之和=整层
+    /// 模糊;字形光晕仅来自自身瓦片内墨迹,瓦片外采样置零恰为正确
+    /// 贡献,无需离屏层)。`blur_radius` 为逻辑像素,内部换算设备
+    /// 像素;嵌套作用域以内层为准(与遮罩渐变同语义)。
+    pub fn with_element_blur<R>(
+        &mut self,
+        blur_radius: Pixels,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint_or_prepaint();
+
+        let previous = self.element_blur_radius;
+        self.element_blur_radius = (blur_radius * self.scale_factor()).0;
+        let result = f(self);
+        self.element_blur_radius = previous;
+        result
+    }
+
+    /// [AMLL patch] 当前生效的模糊半径(设备像素;0 = 不模糊)
+    pub fn element_blur(&self) -> f32 {
+        self.element_blur_radius
+    }
+
     /// [AMLL patch] 像素级追踪:读回最近呈现的一帧(无平台实现时为 None)
     pub fn capture_frame_pixels(&mut self) -> Option<image::RgbaImage> {
         self.platform_window.capture_frame_pixels()
@@ -4982,7 +5011,8 @@ impl Window {
             if subpixel_rendering {
                 self.next_frame.scene.insert_primitive(SubpixelSprite {
                     order: 0,
-                    pad: 0,
+                    // [AMLL patch] 模糊半径位模式(0 = 不模糊)
+                    pad: self.element_blur().to_bits(),
                     bounds,
                     content_mask,
                     color: color.opacity(element_opacity),
@@ -4993,7 +5023,8 @@ impl Window {
             } else {
                 self.next_frame.scene.insert_primitive(MonochromeSprite {
                     order: 0,
-                    pad: 0,
+                    // [AMLL patch] 模糊半径位模式(0 = 不模糊)
+                    pad: self.element_blur().to_bits(),
                     bounds,
                     content_mask,
                     color: color.opacity(element_opacity),
@@ -5141,7 +5172,8 @@ impl Window {
 
         self.next_frame.scene.insert_primitive(MonochromeSprite {
             order: 0,
-            pad: 0,
+            // [AMLL patch] 模糊半径位模式(0 = 不模糊)
+            pad: self.element_blur().to_bits(),
             bounds: final_bounds,
             content_mask,
             color: color.opacity(element_opacity),

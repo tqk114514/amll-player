@@ -44,7 +44,7 @@ use crate::layout::{AlignAnchor, FrameContext, InterludeLayout, LayoutCalculator
 use crate::spring::{pos_y_policy, scale_policy, Spring, SpringParams};
 use crate::timeline::{LyricLine, SeekDetector, Timeline, TimelineDiff};
 use crate::trace::{PixelTrace, TraceState};
-use crate::transform::ScaledElement;
+use crate::transform::{BlurElement, ScaledElement};
 
 /// 焦点行顶部对齐位置(react-full 预置 alignPosition=0.25)
 const ALIGN_POSITION: f64 = 0.25;
@@ -81,6 +81,8 @@ const DOT_PAD_EM: f64 = 0.8;
 const LINE_OPACITY_HIGHLIGHTED: f64 = 0.85;
 /// wrapper opacity 的 CSS transition:`transition: opacity .4s`(默认 ease)
 const LINE_OPACITY_TRANSITION_SEC: f64 = 0.4;
+/// 行模糊的 CSS transition:`transition: filter .4s`(默认 ease)
+const LINE_BLUR_TRANSITION_SEC: f64 = 0.4;
 
 /// 排版原因(上游 LayoutReason)。策略映射(上游 consts.ts):
 /// stagger 仅正常播放开启;直贴 Y(snapPosY)仅连续滚动(触摸拖动跟手),
@@ -250,6 +252,8 @@ pub struct LyricPage {
     prev_active: Vec<bool>,
     /// 各行上浮阶段(激活随媒体推进 / 退激活反演回落 / 反演完成保持落回)
     float_phase: Vec<crate::words::FloatPhase>,
+    /// 各行模糊半径补间(上游 filter: blur .4s ease;单位逻辑像素)
+    blur_px: Vec<AlphaTween>,
     /// 退激活期间的遮罩冻结时刻(上游 maskAnimator.pause();alpha 补间
     /// 收敛后清除)
     mask_frozen: Vec<Option<f64>>,
@@ -334,6 +338,7 @@ impl LyricPage {
             line_opacity: (0..count).map(|_| AlphaTween::new(1.0)).collect(),
             prev_active: vec![false; count],
             float_phase: vec![crate::words::FloatPhase::Active; count],
+            blur_px: (0..count).map(|_| AlphaTween::new(0.0)).collect(),
             mask_frozen: vec![None; count],
             word_spans: (0..count).map(|_| Vec::new()).collect(),
             entered: false,
@@ -596,6 +601,14 @@ impl LyricPage {
             };
             self.alpha_bright[index].retarget(bright, now);
             self.alpha_dark[index].retarget(dark, now);
+            // 行模糊(上游 filter: blur .4s ease;in_viewport 取排版标记)
+            let blur_target = self.blur_level(index, result.lines[index].in_viewport, active);
+            self.blur_px[index].retarget_eased(
+                blur_target,
+                now,
+                LINE_BLUR_TRANSITION_SEC,
+                TweenEasing::Ease,
+            );
             // 退激活:冻结遮罩推进与 float 起点,进入反演回落;
             // 重新激活则回到媒体驱动(上游 enable 重设动画时钟)
             if active {
@@ -641,8 +654,12 @@ impl LyricPage {
         }));
     }
 
-    /// 上游 resolveBlurLevel(blur 视觉属 Phase 2,先供 trace 对比)
+    /// 上游 resolveBlurLevel:触摸滚动期间与焦点行不模糊,
+    /// 视口外最大档,其余按距焦点行距 1+distance,窄视口 ×0.8,封顶 5
     fn blur_level(&self, index: usize, in_viewport: bool, active: bool) -> f64 {
+        if self.is_touch_scrolled {
+            return 0.0;
+        }
         if !in_viewport {
             return 5.0;
         }
@@ -680,6 +697,7 @@ impl LyricPage {
             || self.alpha_bright.iter().any(|tween| tween.animating(now))
             || self.alpha_dark.iter().any(|tween| tween.animating(now))
             || self.line_opacity.iter().any(|tween| tween.animating(now))
+            || self.blur_px.iter().any(|tween| tween.animating(now))
             || self
                 .float_phase
                 .iter()
@@ -892,10 +910,6 @@ impl Render for LyricPage {
         let trace_snapshot = self.trace.is_some().then(|| {
             let count = self.timeline.lines().len();
             let highlighted: &[usize] = self.timeline.highlighted();
-            let latest = self
-                .timeline
-                .latest_highlighted()
-                .unwrap_or(self.timeline.scroll_to_index());
             let ys: Vec<f64> = self
                 .pos_y
                 .iter()
@@ -920,17 +934,8 @@ impl Render for LyricPage {
             let ops: Vec<f64> = (0..count)
                 .map(|index| self.line_opacity[index].sample(now))
                 .collect();
-            let motion_buffer = self.container_height * MOTION_BUFFER_RATIO;
-            let line_h = self.font_size * LINE_TOTAL_EM;
             let blurs: Vec<f64> = (0..count)
-                .map(|index| {
-                    let active = highlighted.contains(&index)
-                        || (index >= self.timeline.scroll_to_index() && index < latest);
-                    let y = ys[index];
-                    let in_viewport = y <= self.container_height + OVERSCAN_PX + motion_buffer
-                        && y + line_h >= -(OVERSCAN_PX + motion_buffer);
-                    self.blur_level(index, in_viewport, active)
-                })
+                .map(|index| self.blur_px[index].sample(now))
                 .collect();
             (ys, ss, as_, a_darks, ops, blurs, hl)
         });
@@ -1079,11 +1084,14 @@ impl Render for LyricPage {
                     .w(px(self.container_width as f32))
                     .h(px(line_total as f32))
                     .opacity(self.line_opacity[index].sample(now) as f32)
-                    .child(ScaledElement::new(
-                        text_element,
-                        scale as f32,
-                        gpui::point(px(0.0), px(y as f32)),
-                        gpui::point(px(0.0), px((line_box / 2.0) as f32)),
+                    .child(BlurElement::new(
+                        ScaledElement::new(
+                            text_element,
+                            scale as f32,
+                            gpui::point(px(0.0), px(y as f32)),
+                            gpui::point(px(0.0), px((line_box / 2.0) as f32)),
+                        ),
+                        self.blur_px[index].sample(now),
                     ))
                     .into_any_element(),
             );
