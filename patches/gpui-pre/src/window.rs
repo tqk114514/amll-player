@@ -1764,7 +1764,6 @@ impl Window {
         platform_window.on_request_frame(Box::new({
             let mut cx = cx.to_async();
             let invalidator = invalidator.clone();
-            let active = active.clone();
             let needs_present = needs_present.clone();
             let next_frame_callbacks = next_frame_callbacks.clone();
             let input_rate_tracker = input_rate_tracker.clone();
@@ -1822,7 +1821,18 @@ impl Window {
                         && next_frame_callbacks.borrow().is_empty())
                 {
                     None
-                } else if !active.get() && !input_rate_tracker.borrow_mut().is_high_rate() {
+                // [AMLL patch] inactive 降频的判定由"窗口未聚焦"改为
+                // "渲染被完全遮挡"(最小化或被其他窗口完全盖住)——失焦但
+                // 可见的窗口仍全速渲染(音乐播放器常驻后台需保持流畅);
+                // 输入高频例外与热节流分支保留
+                } else if handle
+                    .update(&mut cx, |_, window, _| {
+                        window.platform_window.is_render_obstructed()
+                    })
+                    .log_err()
+                    .unwrap_or(false)
+                    && !input_rate_tracker.borrow_mut().is_high_rate()
+                {
                     inactive_frame_interval.map(|interval| (interval, FrameRateLimit::Inactive))
                 } else if let Some(ThermalState::Critical | ThermalState::Serious) = thermal_state {
                     Some((Duration::from_micros(16667), FrameRateLimit::Thermal))

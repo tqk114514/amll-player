@@ -62,6 +62,16 @@ Rust 侧逐字节一致);`quad_vertex` 顶点经 `to_device_position_transformed
 这是 quad `snap_bounds` 像素吸附的亚像素修正:变换作用域内几何
 不吸附,慢速缩放动画(间奏圆点呼吸)不再出现 1px 级跳变。
 
+## 变更点(六):完全遮挡检测(is_render_obstructed)
+
+`src/window.rs`(带 `[AMLL patch]` 注释):实现
+`PlatformWindow::is_render_obstructed` = `IsIconic` || z-order 遮盖
+累计检测(Chromium NativeWindowOcclusionTracker 的简化)——自本窗口
+向上遍历 z 序,剔除 cloak(其他虚拟桌面)与 alpha=0 的分层窗口,
+累计其余窗口对本窗口(经所在监视器裁剪)矩形的覆盖,剩余可见
+面积 ≤ 0 即完全遮挡。无状态,逐帧成本微秒级。配合 gpui-pre 的
+帧率策略:仅最小化/完全遮挡才降频,失焦可见全速。
+
 ## 维护
 
 升级 gpui-kit(连带 gpui-pre-windows 版本)时,对照新版

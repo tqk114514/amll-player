@@ -1201,6 +1201,15 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn capture_frame_pixels(&mut self) -> Option<image::RgbaImage> {
         None
     }
+
+    /// [AMLL patch] 窗口渲染是否被完全遮挡(最小化,或被其他窗口完全
+    /// 盖住)。核心帧率策略以此决定 inactive 降频是否生效:用户策略为
+    /// "仅最小化或完全遮挡才降频",替代上游按窗口焦点判定(失焦但可见
+    /// 仍全速渲染)。默认 false;Windows 实现做 z-order 遮挡检测。
+    fn is_render_obstructed(&self) -> bool {
+        false
+    }
+
     /// Returns the visible viewport in logical pixels relative to the content origin.
     ///
     /// This may be smaller or offset when a keyboard or zoom obscures content;

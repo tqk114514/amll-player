@@ -1,6 +1,14 @@
-feat(gpui): M5 帧率面板——右上角 fps/帧耗叠层
+fix(gpui): 失焦不降频——inactive 节流改按"完全遮挡"判定
 
-- FpsCounter:滑动 2s 窗口的原始帧间隔统计(不经动画 delta 的
-  100ms 钳制污染);右上角 12px 白 0.65 文本
-- 叠层不拦截交互(点击映射层其后覆盖全窗);像素冒烟确认渲染:
-  采样区域亮度 169 = 0.65×255 与设定 alpha 逐位一致
+用户实测:窗口失焦后 fps 从 60 缩到 28、延迟 5ms→35ms。源头是
+gpui-pre 帧循环按"窗口未聚焦"直接施加 ~30fps 节流(上游省电策略)。
+
+- gpui-pre:PlatformWindow 新增 is_render_obstructed()(默认 false);
+  帧率策略判定由 !active 改为遮挡判定——失焦但可见全速渲染,
+  输入高频/热节流例外保留
+- gpui-pre-windows:遮挡实现 = IsIconic || z-order 遮盖累计
+  (Chromium NativeWindowOcclusionTracker 简化):向上遍历 z 序,
+  剔除 cloak 与 alpha=0 分层窗口,累计对本窗口(监视器裁剪)矩形
+  的覆盖;无状态,逐帧微秒级
+- 用户策略:仅最小化或被完全挡住才降频;部分遮挡不触发
+- 冒烟:静止检查点与基线逐位一致;48 测试全绿

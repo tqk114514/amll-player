@@ -631,6 +631,106 @@ impl Drop for WindowsWindow {
     }
 }
 
+/// [AMLL patch] 完全遮挡检测(Chromium NativeWindowOcclusionTracker 的简化):
+/// 从本窗口起沿 z-order 向上遍历,剔除 cloak(其他虚拟桌面)与 alpha=0
+/// 的分层窗口,累计其余窗口对本窗口(经所在监视器裁剪)矩形的覆盖;
+/// 剩余可见面积 ≤ 0 即完全遮挡。无状态,逐帧成本微秒级。
+unsafe fn is_fully_occluded(handle: HWND) -> bool {
+    // 本 crate deny(unsafe_op_in_unsafe_fn):FFI 调用需显式 unsafe 块
+    unsafe {
+    let Some(self_rect) = visible_rect_on_monitor(handle) else {
+        return false;
+    };
+    let mut uncovered = rect_area(&self_rect);
+    let mut other = GetWindow(handle, GW_HWNDPREV).ok();
+    let mut guard = 0;
+    while let Some(hwnd) = other && guard < 512 {
+        guard += 1;
+        let mut rect = RECT::default();
+        if IsWindowVisible(hwnd).as_bool()
+            && !is_cloaked(hwnd)
+            && is_opaque(hwnd)
+            && GetWindowRect(hwnd, &mut rect).is_ok()
+        {
+            uncovered -= intersect_area(&self_rect, &rect);
+            if uncovered <= 0.0 {
+                return true;
+            }
+        }
+        other = GetWindow(hwnd, GW_HWNDPREV).ok();
+    }
+    false
+    }
+}
+
+/// 本窗口矩形与所在监视器区域的交集(离屏部分永不可能被盖住,不计入)
+unsafe fn visible_rect_on_monitor(handle: HWND) -> Option<RECT> {
+    unsafe {
+    let mut rect = RECT::default();
+    GetWindowRect(handle, &mut rect).ok()?;
+    let monitor = MonitorFromWindow(handle, MONITOR_DEFAULTTONEAREST);
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+        return None;
+    }
+    Some(RECT {
+        left: rect.left.max(info.rcMonitor.left),
+        top: rect.top.max(info.rcMonitor.top),
+        right: rect.right.min(info.rcMonitor.right),
+        bottom: rect.bottom.min(info.rcMonitor.bottom),
+    })
+    }
+}
+
+fn rect_area(rect: &RECT) -> f64 {
+    (rect.right - rect.left).max(0) as f64 * (rect.bottom - rect.top).max(0) as f64
+}
+
+fn intersect_area(a: &RECT, b: &RECT) -> f64 {
+    let left = a.left.max(b.left);
+    let top = a.top.max(b.top);
+    let right = a.right.min(b.right);
+    let bottom = a.bottom.min(b.bottom);
+    (right - left).max(0) as f64 * (bottom - top).max(0) as f64
+}
+
+/// cloak(如切换到其他虚拟桌面)的窗口不产生视觉遮挡
+unsafe fn is_cloaked(handle: HWND) -> bool {
+    unsafe {
+    let mut cloaked: u32 = 0;
+    DwmGetWindowAttribute(
+        handle,
+        DWMWA_CLOAKED,
+        &mut cloaked as *mut u32 as *mut core::ffi::c_void,
+        std::mem::size_of::<u32>() as u32,
+    )
+    .is_ok()
+        && cloaked != 0
+    }
+}
+
+/// alpha=0 的分层窗口完全透明,不产生视觉遮挡;
+/// 其余(含未启用 LWA_ALPHA 的分层窗口)按不透明计
+unsafe fn is_opaque(handle: HWND) -> bool {
+    unsafe {
+    let ex_style = GetWindowLongW(handle, GWL_EXSTYLE) as u32;
+    if ex_style & WS_EX_LAYERED.0 != 0 {
+        let mut alpha: u8 = 0;
+        let mut flags = LAYERED_WINDOW_ATTRIBUTES_FLAGS::default();
+        if GetLayeredWindowAttributes(handle, None, Some(&mut alpha), Some(&mut flags)).is_ok()
+            && flags.contains(LWA_ALPHA)
+            && alpha == 0
+        {
+            return false;
+        }
+    }
+    true
+    }
+}
+
 impl PlatformWindow for WindowsWindow {
     fn bounds(&self) -> Bounds<Pixels> {
         self.state.bounds()
@@ -650,6 +750,19 @@ impl PlatformWindow for WindowsWindow {
 
     fn is_maximized(&self) -> bool {
         self.state.is_maximized()
+    }
+
+    /// [AMLL patch] 渲染是否被完全遮挡:最小化,或被其他窗口完全盖住
+    /// (z-order 遮盖累计检测)。核心据此决定 inactive 降频;失焦但
+    /// 可见返回 false(全速渲染)
+    fn is_render_obstructed(&self) -> bool {
+        let handle = self.platform_window_handle;
+        unsafe {
+            if IsIconic(handle).as_bool() {
+                return true;
+            }
+            is_fully_occluded(handle)
+        }
     }
 
     fn window_bounds(&self) -> WindowBounds {

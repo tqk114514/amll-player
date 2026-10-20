@@ -71,6 +71,17 @@ bright …, dark …)`:合成器把文字内容逐像素乘以渐变遮罩 alpha
 (如间奏圆点呼吸,≈0.24px/帧)表现为周期性 1px 跳变的微动;文字精灵
 走矩阵无此问题。SDF 在局部空间求值,带内 AA 随缩放等比展宽。
 
+## 变更点(四):inactive 降频按"完全遮挡"而非"焦点"判定
+
+`src/platform.rs` + `src/window.rs`(带 `[AMLL patch]` 注释):
+
+1. `PlatformWindow` 新增默认返回 false 的 `is_render_obstructed()`
+   ——窗口渲染是否被完全遮挡(最小化,或被其他窗口完全盖住)。
+2. 帧率策略(原"窗口未聚焦 → ~30fps 节流省电")的判定由
+   `!active` 改为调用 `is_render_obstructed()`:失焦但可见的窗口
+   仍全速渲染(音乐播放器常驻后台需保持流畅);输入高频例外与
+   热节流分支保留,窗体 `active` 字段不再被帧循环消费。
+
 ## 已知边界
 
 - `paint_emoji` 走 `PolychromeSprite`(全彩图元,无变换字段),
