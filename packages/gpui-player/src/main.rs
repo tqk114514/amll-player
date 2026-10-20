@@ -12,6 +12,7 @@ mod lyric_page;
 mod spring;
 mod dots;
 mod ease;
+mod mesh_bg;
 mod timeline;
 mod transform;
 mod words;

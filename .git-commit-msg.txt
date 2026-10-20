@@ -1,21 +1,18 @@
-feat(gpui): emphasize 辉光——重音词逐字符涨落演出(上游全量移植)
+feat(gpui): mesh 渐变背景 CPU 侧——上游 mesh-renderer 数据管线全量移植
 
-上游 dom/animation/emphasize 完整移植:
-- 选词(shouldEmphasize):CJK 词 ≥1s;拉丁词 ≥1s 且 2-7 字符;
-  原始词元信息随 atom 传递,拉丁组按 chunk 级(任一子词达标整组逐字拆分)
-- 逐字符参数(calculateEmphasizeParams):amount/blur 随 du 塑形
-  (>1 开方、<1 立方)、基准 ×0.6/×0.5;末词 amount×1.6、blur×1.5、
-  du×1.2;封顶 1.2/0.8;错峰延迟 wordDe = de + du/2.5/count·i
-- 涨落曲线 empEasing:前半 bezIn(.2,.4,.58,1) 升、后半 1−bezOut
-  (.3,0,.58,1) 回落;驱动绕字心缩放(1+transX·.1·amount)、字符
-  互推(−transX·.03·amount·(count/2−i))、上浮(−.025em·amount)
-- 辉光底:textShadow 0 0 min(.3,blur·.3)em rgba(255,255,255,
-  transX·blur)——blur 作用域(patch)以字形自身光栅生成光晕,
-  σ=半径/2(text-shadow/box-shadow 同约定),α 经渐变承载
-  (亮部 transX·blur、暗部 ×0.4,被遮罩文字的辉光正确分层)
-- 附加正弦上浮:y=−sin(xπ)·.05em,时长 du×1.4、提前 400ms
-  (composite: add 语义,叠加在基础 float 之上)
-- 退激活遮罩冻结时辉光同步冻结(上游 disable 不反演辉光动画)
-- 冒烟(流浪诗人,7 个 emphasize 词):词演唱中焦点带辉光像素
-  209→1207(6×),机制验证;54 测试全绿(新增 6 个 emphasize 单测:
-  参数塑形/末词增幅封顶/涨落曲线单调性/错峰延迟/逐字拆分)
+上游 bg-render/mesh-renderer 的 CPU 数据侧(GPU 管线下一程接渲染器 patch):
+- FLAC PICTURE 块解析:提取内嵌专辑封面(24 位块长/嵌套长度边界校验)
+- 专辑图处理管线(上游 setAlbum):32×32 缩放 → 对比 0.4 → 饱和 3.0
+  → 对比 1.7 → 亮度 0.75(f64 中间值不截断)→ StackBlur
+  (radius=2 quality=4,水平/垂直滑动窗口逐行移植)
+- 控制点:上游六组预设逐位移植 + generateControlPoints 随机生成
+  (噪声梯度法线偏移 + 3×3 加权平滑,xorshift64* 确定性 RNG:
+  同专辑种子稳定,不同专辑不共享布局);80% 预设/20% 生成 6×6
+- BHPMesh Hermite 双三次细分(50 级):gl-matrix 列主元布局、
+  H/Hᵀ 系数矩阵、precompute/transformMat4 同序运算、f64 精度
+  (JS number 同款)保证顶点逐位一致;顶点网格 (vx,vy) 索引与
+  uvY 翻转约定按上游 updateMesh 移植
+- build_resource:封面 → 纹理 + 网格资源(id 供渲染器缓存失效)
+- 单测 6 项:FLAC 解析(24 位块长夹具)、管线输出 32×32 有效、
+  StackBlur 平坦图不变、预设计数与上游一致(六组)、细分网格
+  布局与角点、生成器确定性
