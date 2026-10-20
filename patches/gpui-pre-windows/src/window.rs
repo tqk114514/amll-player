@@ -683,8 +683,14 @@ unsafe fn is_fully_occluded(handle: HWND) -> bool {
                 }
             }
             log::info!(
-                "[AMLL patch] 遮挡判定翻转: occluded={occluded}, 遮盖 {coverage:.0}%, 遮挡者: {}",
-                describers.join(" | ")
+                "[AMLL patch] 遮挡判定翻转: occluded={occluded}, 遮盖 {coverage:.0}%, 遮挡者: {}, self=({},{})-({},{}) total={:.1}k found_self={}",
+                describers.join(" | "),
+                ctx.self_rect.left,
+                ctx.self_rect.top,
+                ctx.self_rect.right,
+                ctx.self_rect.bottom,
+                total / 1000.0,
+                ctx.found_self
             );
         }
     });
@@ -854,9 +860,13 @@ impl PlatformWindow for WindowsWindow {
 
     /// [AMLL patch] 渲染是否被完全遮挡:最小化,或被其他窗口完全盖住
     /// (z-order 遮盖累计检测)。核心据此决定 inactive 降频;失焦但
-    /// 可见返回 false(全速渲染)
+    /// 可见返回 false(全速渲染)。
+    /// 注意必须用 `hwnd`(可见主窗口)而非 `platform_window_handle`
+    /// ——后者是 platform.rs 创建的隐藏系统广播窗口(WS_EX_TOOLWINDOW,
+    /// 0×0,z 序底部),拿它检测等于问"屏幕原点被盖没有",任何最大化
+    /// 应用都会误判遮挡
     fn is_render_obstructed(&self) -> bool {
-        let handle = self.platform_window_handle;
+        let handle = self.0.hwnd;
         unsafe {
             if IsIconic(handle).as_bool() {
                 return true;

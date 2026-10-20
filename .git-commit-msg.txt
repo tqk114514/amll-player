@@ -1,8 +1,10 @@
-fix(gpui): 遮挡遍历改用 EnumWindows——GW_HWNDPREV 方向与字面语义不符
+fix(gpui): 遮挡检测对象修正——用可见主窗口 hwnd 而非隐藏广播窗口
 
-实测复现:播放窗被最大化窗口完全盖住时,遮盖面积仍为 0%、判定
-恒 false(GW_HWNDPREV 链走不到头顶上的遮挡者)。改用 EnumWindows
-(实践语义自顶向下)自 z 序顶部枚举、见到本窗口即停——之前枚举到
-的即在本窗口之上;剔除 cloak 与 alpha=0 分层窗口的逻辑不变。
-翻转日志升级为指认级:输出遮盖百分比与遮盖面积最大的窗口
-类名+标题,实测任何误判可当场定位元凶。
+实测日志定位:判定读到的 self 矩形是 (0,0)-(16,16) 的隐藏窗口
+(platform.rs 创建的 WS_EX_TOOLWINDOW 系统广播窗,z 序底部),遮挡
+判定实际在问"屏幕原点被盖没有"——任何最大化应用都会误判遮挡,
+播放窗切到最上也回不到全速(28fps 卡死的根因)。
+
+- is_render_obstructed 改用 WindowsWindowInner::hwnd(可见主窗口)
+- 探针日志补 self 矩形/总面积/found_self,修正后实测:
+  self=(92,81)-(1132,820) total=768.6k,判定 false,符合预期
