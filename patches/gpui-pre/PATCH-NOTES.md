@@ -93,6 +93,8 @@ blur_radius, f)` 与 `element_blur()`(与 with_element_transformation
 数学依据:高斯卷积线性,blur(Σ字形)=Σblur(字形),逐字形模糊与
 整层模糊等价;字形光晕仅来自自身瓦片内墨迹,瓦片外采样置零恰为
 线性卷积的正确贡献——无需离屏层与分离模糊两趟,无降级近似。
+blur_radius 即高斯标准差(CSS blur(Npx) 的 N 定义为 σ,MDN 原文:
+"它定义了高斯函数的标准偏差值")。
 
 ## 已知边界
 
