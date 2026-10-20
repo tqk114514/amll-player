@@ -1,14 +1,7 @@
-fix(gpui): 失焦不降频——inactive 节流改按"完全遮挡"判定
+chore(gpui): 遮挡判定加翻转日志——输出遮盖率供实测核对
 
-用户实测:窗口失焦后 fps 从 60 缩到 28、延迟 5ms→35ms。源头是
-gpui-pre 帧循环按"窗口未聚焦"直接施加 ~30fps 节流(上游省电策略)。
-
-- gpui-pre:PlatformWindow 新增 is_render_obstructed()(默认 false);
-  帧率策略判定由 !active 改为遮挡判定——失焦但可见全速渲染,
-  输入高频/热节流例外保留
-- gpui-pre-windows:遮挡实现 = IsIconic || z-order 遮盖累计
-  (Chromium NativeWindowOcclusionTracker 简化):向上遍历 z 序,
-  剔除 cloak 与 alpha=0 分层窗口,累计对本窗口(监视器裁剪)矩形
-  的覆盖;无状态,逐帧微秒级
-- 用户策略:仅最小化或被完全挡住才降频;部分遮挡不触发
-- 冒烟:静止检查点与基线逐位一致;48 测试全绿
+判据澄清(用户质询点):纯几何 + z 序覆盖累计,与"最大化"无关。
+最大化窗口仅在位于播放窗之上且几何盖满时才计入;播放窗压在其上
+则根本不在遍历链上(GW_HWNDPREV 只走 z 序上方)。
+判定翻转时 log::info 输出 occluded 与遮盖百分比,实测两个方向
+(播放窗在最大化窗口之上 / 任意窗口自上方盖满)可直接核对。

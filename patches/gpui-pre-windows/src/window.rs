@@ -641,7 +641,8 @@ unsafe fn is_fully_occluded(handle: HWND) -> bool {
     let Some(self_rect) = visible_rect_on_monitor(handle) else {
         return false;
     };
-    let mut uncovered = rect_area(&self_rect);
+    let total = rect_area(&self_rect);
+    let mut uncovered = total;
     let mut other = GetWindow(handle, GW_HWNDPREV).ok();
     let mut guard = 0;
     while let Some(hwnd) = other && guard < 512 {
@@ -654,12 +655,28 @@ unsafe fn is_fully_occluded(handle: HWND) -> bool {
         {
             uncovered -= intersect_area(&self_rect, &rect);
             if uncovered <= 0.0 {
-                return true;
+                break;
             }
         }
         other = GetWindow(hwnd, GW_HWNDPREV).ok();
     }
-    false
+    // [AMLL patch] 判定翻转时输出遮盖率:判据为纯几何 + z 序(与本窗口
+    // 或其他窗口是否最大化无关),翻转日志供实测核对两个方向——
+    // 播放窗压在最大化窗口之上 → 不遮挡;任何窗口自上方盖满 → 遮挡
+    let occluded = uncovered <= 0.0;
+    thread_local! {
+        static LAST_VERDICT: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+    }
+    LAST_VERDICT.with(|last| {
+        if last.get() != Some(occluded) {
+            last.set(Some(occluded));
+            log::info!(
+                "[AMLL patch] 遮挡判定翻转: occluded={occluded}, 遮盖 {:.0}%",
+                if total > 0.0 { (total - uncovered) / total * 100.0 } else { 0.0 }
+            );
+        }
+    });
+    occluded
     }
 }
 
