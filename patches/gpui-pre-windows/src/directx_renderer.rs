@@ -905,6 +905,14 @@ impl DirectXRenderer {
                 sampler,
                 cells,
             });
+            log::debug!(
+                "[AMLL patch] mesh 缓存重建: id={} cells={} 顶点={} 纹理={}x{}",
+                background.id,
+                self.mesh_cache.as_ref().unwrap().cells.len(),
+                background.vertices.len(),
+                background.texture_width,
+                background.texture_height
+            );
         }
         let cache = self
             .mesh_cache

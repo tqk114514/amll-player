@@ -39,9 +39,10 @@
 use std::time::Instant;
 
 use amll_player_core::{AudioPlayerHandle, AudioThreadEvent, AudioThreadMessage};
+use gpui_kit::prelude::FluentBuilder;
 use gpui_kit::{
-    Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels,
-    Render, SharedString, Size, Styled, FontWeight, Window, div, px, rgba,
+    Context, Hsla, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    Pixels, Render, SharedString, Size, Styled, FontWeight, Window, div, px, rgba,
 };
 
 use crate::layout::{AlignAnchor, FrameContext, InterludeLayout, LayoutCalculator};
@@ -1326,7 +1327,10 @@ impl Render for LyricPage {
             .id("lyric-page")
             .relative()
             .size_full()
-            .bg(rgba(0x0a0a0cff))
+            // 有封面时 mesh 渐变背景铺满窗口,页面自身保持透明(Root 的主题
+            // 背景 token 已在 main.rs 置为全透明,不再遮挡 mesh);无封面时
+            // 画上游一致的暗色兜底,避免露出窗口清屏色
+            .when(self.mesh.is_none(), |el| el.bg(rgba(0x0a0a0cff)))
             .children(children)
     }
 }

@@ -256,6 +256,14 @@ fn main() -> anyhow::Result<()> {
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
 
+        // [AMLL] Root(gpui-component RootPlugin)会给根表面刷一层不透明的
+        // 主题背景色(Light=纯白),它位于歌词页之下、mesh 之上,会把场景级
+        // mesh 渐变背景整个盖住(画面全白的根因)。与上游一致——web 版的
+        // body 是透明的,mesh 是页面自己的最底层——这里把主题背景 token
+        // 置为全透明:无封面时由歌词页画自己的暗色兜底,有封面时 mesh 直接可见。
+        gpui_kit::component::Theme::global_mut(cx).tokens.background =
+            gpui::transparent_black().into();
+
         let view = cx.new(|_| LyricPage::new(handle, lines, trace_state, pixel_dir, mesh));
 
         gpui_kit::open_window(

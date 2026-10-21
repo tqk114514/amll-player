@@ -746,8 +746,11 @@ pub fn tessellate(
         }
     }
 
-    let cells_across = grid_w as u32;
-    let cell_count = ((width - 1) * sub) as u32 * ((height - 1) * sub) as u32;
+    // 单元数 = 顶点数 - 1(上游 ELEMENT 网格:vertexWidth-1 × vertexHeight-1)。
+    // 渲染器按 grid_width = cells_across + 1 寻址顶点行,恰好等于存储行宽
+    // grid_w —— 此前误传顶点列数,导致 shader 行错位 + 边缘越界读零。
+    let cells_across = (grid_w - 1) as u32;
+    let cell_count = (grid_w as u32 - 1) * (grid_h as u32 - 1);
     (vertices, cells_across, cell_count)
 }
 
@@ -877,8 +880,9 @@ mod tests {
         let conf = vec![cp(0, 0, -1.0, -1.0), cp(1, 0, 1.0, -1.0), cp(0, 1, -1.0, 1.0), cp(1, 1, 1.0, 1.0)];
         let (vertices, cells_across, cell_count) = tessellate(&conf, 2, 2);
         assert_eq!(vertices.len(), 50 * 50);
-        assert_eq!(cells_across, 50);
-        assert_eq!(cell_count, 50 * 50);
+        // 单元数 = 顶点数 - 1(渲染器 grid_width = cells_across+1 = 顶点行宽)
+        assert_eq!(cells_across, 49);
+        assert_eq!(cell_count, 49 * 49);
         // 位置在 [-1,1],uv 在 [0,1]
         for v in &vertices {
             assert!(v.pos[0] >= -1.5 && v.pos[0] <= 1.5, "pos={:?}", v.pos);
