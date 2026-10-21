@@ -276,6 +276,11 @@ pub struct LyricPage {
     mesh: Option<crate::mesh_bg::MeshBackgroundResource>,
     /// mesh 背景流动时钟(毫秒;frameTime += delta·flowSpeed,flowSpeed=1)
     mesh_time_ms: f64,
+    /// 最近一次 FFTData 的前两 bin(上游取 fftData[0]/[1] 低音区)
+    fft_bins: [f64; 2],
+    /// 上游 lowFreqVolumeAtom 驱动器(FFTToLowPassContext 的移植),
+    /// 输出 /10 后进 mesh 的 u_volume
+    low_freq: crate::mesh_bg::LowFreqVolume,
     /// 各行悬停框 alpha 补间(上游 background-color .25s ease)
     hover_bg: Vec<AlphaTween>,
     /// 退激活期间的遮罩冻结时刻(上游 maskAnimator.pause();alpha 补间
@@ -368,6 +373,8 @@ impl LyricPage {
             mouse_down: false,
             mesh,
             mesh_time_ms: 0.0,
+            fft_bins: [0.0; 2],
+            low_freq: crate::mesh_bg::LowFreqVolume::new(),
             hover_bg: (0..count).map(|_| AlphaTween::new(0.0)).collect(),
             mask_frozen: vec![None; count],
             word_spans: (0..count).map(|_| Vec::new()).collect(),
@@ -401,6 +408,15 @@ impl LyricPage {
             }
             AudioThreadEvent::AudioPlayFinished { .. } | AudioThreadEvent::TrackEnded => {
                 self.playing = false;
+            }
+            // FFT 频谱(128 bin/80–2000Hz):上游只取前两 bin 驱动低频跳动
+            AudioThreadEvent::FFTData { data } => {
+                if let Some(v) = data.first() {
+                    self.fft_bins[0] = *v as f64;
+                }
+                if let Some(v) = data.get(1) {
+                    self.fft_bins[1] = *v as f64;
+                }
             }
             AudioThreadEvent::LoadError { error }
             | AudioThreadEvent::PlayError { error } => {
@@ -941,12 +957,14 @@ impl Render for LyricPage {
             window.request_animation_frame();
         }
 
-        // 5.4) mesh 渐变背景(上游 MeshGradientRenderer):流动时钟
-        // 按墙钟推进(flowSpeed=1),无 FFT 数据源时 volume=0(player-core
-        // 后续接入 FFT 事件即点亮"背景随低频呼吸");alpha=1(单专辑无交叉淡化)
+        // 5.4) mesh 渐变背景(上游 MeshGradientRenderer):流动时钟按墙钟
+        // 推进(flowSpeed=1);低频跳动 = FFTToLowPassContext 移植(输出
+        // /10 进 u_volume,上游 setLowFreqVolume 语义);alpha=1(单专辑
+        // 无交叉淡化)
         if let Some(mesh) = &self.mesh {
             self.mesh_time_ms += delta * 1000.0;
-            let background = mesh.to_scene_background(self.mesh_time_ms, 0.0, 1.0);
+            let low = self.low_freq.update(self.fft_bins, delta * 1000.0);
+            let background = mesh.to_scene_background(self.mesh_time_ms, low / 10.0, 1.0);
             window.paint_mesh_background(background);
         }
 

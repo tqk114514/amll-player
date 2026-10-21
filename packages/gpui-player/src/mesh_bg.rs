@@ -819,6 +819,114 @@ impl MeshBackgroundResource {
     }
 }
 
+/// [AMLL] 上游 FFTToLowPassContext(react-full LocalMusicContext)的逐公式移植。
+///
+/// 数据源:player-core 音频线程每 50ms 发射 `FFTData`(128 bin,频率
+/// 范围默认 80–2000Hz),上游取前两 bin(约 80–110Hz 低音区)的对数
+/// 电平;10 帧滚动窗做节拍检测(max²−min > 0.35 输出 max² 尖峰,否则
+/// min·0.25 底);0.003/ms 双向对称平滑(每帧 ~5%)。输出即上游
+/// lowFreqVolumeAtom 的 curValue,mesh 侧再 /10 进 u_volume(上游
+/// `setLowFreqVolume(v) → volume = v/10`)。
+///
+/// 注意:上游 rAF 循环每帧(非每 FFT 事件)把当前 bin 值推入窗口,
+/// 重复值会连续占窗——本移植保持同节奏,由渲染循环每帧驱动 update。
+pub struct LowFreqVolume {
+    /// 平滑后的当前值(上游 curValue;初始 1 = atom 默认值)
+    cur_value: f64,
+    /// 10 帧滚动窗(上游 gradient 数组)
+    gradient: Vec<f64>,
+    /// 首帧标记(上游首帧 delta 巨大会经 clamp 直接吸附到目标值;
+    /// 此处按新开页面语义取 delta=0)
+    initialized: bool,
+}
+
+/// 上游 gradient 滑动窗长度
+const GRADIENT_WINDOW: usize = 10;
+/// 上游节拍尖峰判定阈值(difference > 0.35)
+const BEAT_DIFFERENCE: f64 = 0.35;
+/// 上游平滑速率(0.003/ms;16.7ms 帧 ≈ 每帧 5%)
+const SMOOTH_RATE: f64 = 0.003;
+
+/// 上游 amplitudeToLevel:对数压缩(f32 幅度 → 0.5·log10(x/255 + 1))
+#[inline]
+fn amplitude_to_level(amplitude: f64) -> f64 {
+    0.5 * (amplitude / 255.0 + 1.0).log10()
+}
+
+impl Default for LowFreqVolume {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LowFreqVolume {
+    pub fn new() -> Self {
+        Self {
+            cur_value: 1.0,
+            gradient: Vec::new(),
+            initialized: false,
+        }
+    }
+
+    /// 每渲染帧驱动一次。`bins` 为最近一次 FFTData 的前两 bin,
+    /// `delta_ms` 为帧间隔毫秒;返回平滑后的当前值(未 /10)。
+    pub fn update(&mut self, bins: [f64; 2], delta_ms: f64) -> f64 {
+        let volume = (amplitude_to_level(bins[0]) + amplitude_to_level(bins[1])) * 0.5;
+        let value = self.calculate_gradient(volume);
+        if !self.initialized {
+            self.initialized = true;
+            return self.cur_value;
+        }
+        // 上游双向对称:min/max 钳制保证不过冲
+        let step = (value - self.cur_value) * SMOOTH_RATE * delta_ms;
+        if self.cur_value < value {
+            self.cur_value = (self.cur_value + step).min(value);
+        } else {
+            self.cur_value = (self.cur_value + step).max(value);
+        }
+        // 上游 NaN 兜底
+        if !self.cur_value.is_finite() {
+            self.cur_value = 1.0;
+        }
+        self.cur_value
+    }
+
+    /// 上游 calculateGradient:窗未满且无重复值 → 填充并返回 0;
+    /// 否则滑窗推进,节拍判定输出 max²(尖峰)或 min·0.25(底)。
+    fn calculate_gradient(&mut self, volume: f64) -> f64 {
+        if self.gradient.len() < GRADIENT_WINDOW && !self.gradient.contains(&volume) {
+            self.gradient.push(volume);
+            return 0.0;
+        }
+        // 到这里窗必非空(空窗时 contains 必为假,已走上一分支)
+        self.gradient.remove(0);
+        self.gradient.push(volume);
+        let mut max_in_interval = f64::NEG_INFINITY;
+        let mut min_in_interval = f64::INFINITY;
+        for v in &self.gradient {
+            // JS Math.max/min 遇 NaN 传播 NaN(f64::max 会跳过,语义不同;
+            // NaN 会经平滑进入 cur_value 触发下方兜底,对应上游空闲态)
+            max_in_interval = if max_in_interval.is_nan() || v.is_nan() {
+                f64::NAN
+            } else {
+                max_in_interval.max(*v)
+            };
+            min_in_interval = if min_in_interval.is_nan() || v.is_nan() {
+                f64::NAN
+            } else {
+                min_in_interval.min(*v)
+            };
+        }
+        let max_sq = max_in_interval * max_in_interval;
+        let difference = max_sq - min_in_interval;
+        if difference > BEAT_DIFFERENCE {
+            max_sq
+        } else {
+            min_in_interval * 0.25
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -905,5 +1013,60 @@ mod tests {
         // 同种子稳定
         let conf2 = generate_control_points(6, 6, &mut MeshRng::new(42));
         assert_eq!(conf, conf2);
+    }
+
+    #[test]
+    fn low_freq_fill_then_beat_spike_matches_upstream() {
+        // 夹具值按上游 JS 公式逐位计算(见 FFTToLowPassContext):
+        // level(x)=0.5·log10(x/255+1), delta=16.667ms, 平滑因子 0.050001
+        let mut lf = LowFreqVolume::new();
+        let delta = 16.667;
+        // f1: bins(1000,1000) → 填充期 value=0;首帧初始化不衰减,保持 1
+        assert!((lf.update([1000.0, 1000.0], delta) - 1.0).abs() < 1e-12);
+        // f2..f10: 其余 9 个不同幅值,继续填充窗口,平滑向 0 衰减
+        for i in 1..10 {
+            let b = 1000.0 * (i + 1) as f64;
+            lf.update([b, b], delta);
+        }
+        // 9 帧衰减后: 1·(1-0.050001)^9 = 0.630243438966
+        assert!((lf.cur_value - 0.630243438966).abs() < 1e-9, "{}", lf.cur_value);
+        assert_eq!(lf.gradient.len(), 10);
+        // f11: bins(20000,20000) → vol=0.9499960335 落入满窗;
+        // max²=0.9024924637, min=0.4733031829, diff=0.4292 > 0.35 → 节拍尖峰
+        let cur = lf.update([20000.0, 20000.0], delta);
+        // 尖峰帧平滑: cur = 0.630243438966 + (0.9024924637-0.6302..)·0.050001
+        assert!((cur - 0.643856162452).abs() < 1e-9, "{cur}");
+    }
+
+    #[test]
+    fn low_freq_constant_input_settles_to_floor() {
+        // 恒定输入:首帧入窗,此后值重复 → 滑窗保持长度 1,输出 min·0.25
+        let mut lf = LowFreqVolume::new();
+        lf.update([50.0, 50.0], 16.667); // f1 初始化
+        let cur = lf.update([50.0, 50.0], 16.667); // f2: value = 0.038879829456·0.25
+        assert_eq!(lf.gradient.len(), 1);
+        assert!((cur - 0.950485007588).abs() < 1e-9, "{cur}");
+        // 大量帧后收敛到 vb·0.25 = 0.009719957364(指数逼近,200 帧后
+        // 尾巴 ≈ 0.94·(1-0.050001)^200 ≈ 3.3e-5,故容差 1e-4)
+        for _ in 0..200 {
+            lf.update([50.0, 50.0], 16.667);
+        }
+        assert!(
+            (lf.cur_value - 0.009719957364).abs() < 1e-4,
+            "{}",
+            lf.cur_value
+        );
+    }
+
+    #[test]
+    fn low_freq_nan_input_recovers_to_default() {
+        // 上游空闲态路径:fftData 空时 fftData[0]=undefined → NaN 灌窗;
+        // 窗满后 Math.max(NaN..)=NaN → curValue=NaN → 兜底回 1
+        let mut lf = LowFreqVolume::new();
+        for _ in 0..11 {
+            let cur = lf.update([f64::NAN, f64::NAN], 16.667);
+            assert!(cur.is_finite(), "{cur}");
+        }
+        assert_eq!(lf.cur_value, 1.0);
     }
 }

@@ -1,15 +1,25 @@
-feat(gpui): mesh 渐变背景 GPU 管线接线 + --cover CLI(光栅根因待专项排查)
+fix(gpui-player): 点亮 mesh 渐变背景——根因是 Root 主题白底遮挡而非管线缺陷
 
-- patch gpui-pre:MeshBackground 场景原语 + paint_mesh_background API
-- patch gpui-pre-windows:mesh_background vs/ps(上游 WebGL1 移植:
-  aspect 修正/体积缩放旋转采样/暗角/抖动/镜像重复)、
-  MeshBackgroundCell 实例管线、按 id 缓存的 IMMUTABLE 顶点/纹理/采样器、
-  draw_range_with_texture 绘制(与正常图元同路径)、GlobalParams 扩展
-  mesh_uniforms(64 字节布局两侧镜像)、ShaderModule 双侧登记
-- CLI:--cover cover.png|jpg 显式指定取色图 > FLAC 内嵌 PICTURE 自动
-  提取;id 取内容哈希(同专辑控制点摇号跨启动稳定)
-- 已知问题(如实):管线全通(编译/缓存/绑定/绘制执行均验证)但光栅
-  无可见产出,硬编码全屏四边形同样不画——已排除编译/缓冲/绑定/绘制
-  路径/批次偏移等十项假设,根因疑在管线状态层,需 D3D 调试层专项排查。
-  当前不透明底页遮挡,画面零回归(基线 49/52 帧正常,60 测试绿、
-  clippy 零告警),修好根因后移除遮挡即点亮
+mesh 管线自始至终工作正常。此前"执行但不光栅"的结论由两层叠加造成:
+
+1. 覆盖层:gpui-component RootPlugin 给根表面刷不透明主题背景 quad
+   (Light=纯白全窗),位于场景级 mesh 之上,每帧将其完全盖住。修复:
+   main.rs 将主题背景 token 置为全透明(与上游 web 版 body 透明的
+   结构对齐);歌词页仅在无封面时画暗色兜底(rgba(0x0a0a0c))。
+2. 测量失效:旧诊断的两套观测手段全部无效——应用内像素捕获读到
+   翻转队列的释放标记缓冲(全盲);CopyFromScreen 截图时窗口总被
+   编辑器完全遮挡。改用前台置顶+全屏截图+窗口矩形裁剪后,mesh
+   首次得到有效观测:红蓝渐变封面实测铺满窗口,暗角/流动/歌词
+   叠加全部正常。
+
+另修复 mesh_bg 单元数差一:tessellate 误将顶点列数当单元列数
+(cells_across 应为 grid_w-1),shader 侧行宽与顶点存储行宽不符,
+网格错行+边缘单元越界读零。修复后 249x249 单元与 250x250 顶点
+网格寻址一致,既有测试断言同步更新。
+
+三路径验收:--cover 真封面(JPG)渐变铺满 99.6%;FLAC 无内嵌封面
+→ 日志提示+暗色兜底;--cover 读取失败 → 暗色兜底无白闪。
+60 测试全绿;clippy 基线零告警(既有测试代码告警不在本次范围)。
+
+patches/gpui-pre-windows: mesh 缓存重建新增 debug 日志;
+PATCH-NOTES 已知问题章节改写为已定谳记录。
