@@ -1,25 +1,22 @@
-fix(gpui-player): 点亮 mesh 渐变背景——根因是 Root 主题白底遮挡而非管线缺陷
+feat(gpui-player): FFT 低频跳动——上游 FFTToLowPassContext 逐公式移植
 
-mesh 管线自始至终工作正常。此前"执行但不光栅"的结论由两层叠加造成:
+数据链路全部复用现有设施:player-core 音频线程本就随播放无条件发射
+FFTData(50ms/128bin/80-2000Hz,与 Tauri 版同一条 FFTPlayer,数值
+口径一致),gpui 侧此前只是没人消费。
 
-1. 覆盖层:gpui-component RootPlugin 给根表面刷不透明主题背景 quad
-   (Light=纯白全窗),位于场景级 mesh 之上,每帧将其完全盖住。修复:
-   main.rs 将主题背景 token 置为全透明(与上游 web 版 body 透明的
-   结构对齐);歌词页仅在无封面时画暗色兜底(rgba(0x0a0a0c))。
-2. 测量失效:旧诊断的两套观测手段全部无效——应用内像素捕获读到
-   翻转队列的释放标记缓冲(全盲);CopyFromScreen 截图时窗口总被
-   编辑器完全遮挡。改用前台置顶+全屏截图+窗口矩形裁剪后,mesh
-   首次得到有效观测:红蓝渐变封面实测铺满窗口,暗角/流动/歌词
-   叠加全部正常。
+新增 mesh_bg::LowFreqVolume(上游 LocalMusicContext rAF 循环的移植):
+- 电平压缩 level(x)=0.5·log10(x/255+1),取 FFTData 前两 bin(约
+  80-110Hz 低音区)的平均
+- 10 帧滚动窗节拍检测:max²−min > 0.35 输出 max² 尖峰,否则
+  min·0.25 安静底;窗未满且无重复值时填充并输出 0
+- 0.003/ms 双向对称平滑(min/max 钳制不过冲),NaN 兜底回 1
+- Math.max/min 的 NaN 传播语义单独对齐(f64::max 会跳过 NaN,
+  上游空闲态依赖 NaN→curValue=1 的重置路径)
 
-另修复 mesh_bg 单元数差一:tessellate 误将顶点列数当单元列数
-(cells_across 应为 grid_w-1),shader 侧行宽与顶点存储行宽不符,
-网格错行+边缘单元越界读零。修复后 249x249 单元与 250x250 顶点
-网格寻址一致,既有测试断言同步更新。
+接线:lyric_page 消费 FFTData 事件存前两 bin,每渲染帧驱动
+low_freq(与上游 rAF 每帧推窗同节奏),输出 /10 进 mesh u_volume
+(上游 setLowFreqVolume 语义)。
 
-三路径验收:--cover 真封面(JPG)渐变铺满 99.6%;FLAC 无内嵌封面
-→ 日志提示+暗色兜底;--cover 读取失败 → 暗色兜底无白闪。
-60 测试全绿;clippy 基线零告警(既有测试代码告警不在本次范围)。
-
-patches/gpui-pre-windows: mesh 缓存重建新增 debug 日志;
-PATCH-NOTES 已知问题章节改写为已定谳记录。
+验收:20s 实测 low 值随节拍在 0.24↔1.36 摆动(u_volume
+0.024→0.136),采样缩放 0.95→0.73、每拍旋转踢动可见;
+63 测试全绿(含 3 项 JS 对照夹具单测),clippy 零告警。

@@ -370,6 +370,17 @@ impl AudioPlayer {
                             }
 
                             self.media_manager.update_play_state(is_playing);
+
+                            // [AMLL] seek 后立即补发位置:PlayPosition 常规节奏
+                            // 1s 一拍,UI 的乐观 seek 更新若只等常规 tick,
+                            // 点击→处理完成之间撞上的旧位置 tick 会把 UI 拽回
+                            // 旧位置最长一秒。补发把校正窗口压到毫秒级
+                            // (counter 已清零,position 即当前真实位置)。
+                            let _ = emitter
+                                .emit(AudioThreadEvent::PlayPosition {
+                                    position: *position,
+                                })
+                                .await;
                         }
                     } else {
                         warn!("找不到解码器句柄, 无法执行跳转");

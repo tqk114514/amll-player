@@ -427,17 +427,34 @@ impl LyricPage {
         cx.notify();
     }
 
+    /// 行点击 seek:乐观更新本地时间(上游浏览器对 audio.currentTime 的
+    /// 行为——seek 请求即改读数,下一帧歌词即跳、seek 弹簧当帧起跳);
+    /// 音频线程的实际位置随后经 PlayPosition 事件校正(SeekAudio 处理后
+    /// 有即时补发,常规节奏仍是 1s 一拍)。
+    fn seek_to(&mut self, position_ms: f64) {
+        self.event_position_ms = position_ms;
+        self.event_wall = Instant::now();
+        self.send_seek(position_ms / 1000.0);
+    }
+
+    /// 发送 seek 命令到音频线程。消息通道是无界 mpsc(同步 send),复用
+    /// 首次调用时创建的静态 runtime 即可;此前每次点击新建线程+runtime
+    /// (~1-3ms 纯噪声)。
     fn send_seek(&self, position_sec: f64) {
         let Some(handle) = &self.handle else {
             return;
         };
         let handle = handle.clone();
-        std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("创建 Tokio 运行时失败");
-            runtime.block_on(async move {
+        static SEEK_RUNTIME: std::sync::OnceLock<tokio::runtime::Runtime> =
+            std::sync::OnceLock::new();
+        SEEK_RUNTIME
+            .get_or_init(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("创建 Tokio 运行时失败")
+            })
+            .block_on(async move {
                 if let Err(e) = handle
                     .send_anonymous(AudioThreadMessage::SeekAudio {
                         position: position_sec,
@@ -447,7 +464,6 @@ impl LyricPage {
                     tracing::warn!("seek 失败: {e:?}");
                 }
             });
-        });
     }
 
     /// 间奏圆点行(上游 InterludeDotsEl):三颗 SDF 几何圆(quad 圆角=
@@ -1322,7 +1338,7 @@ impl Render for LyricPage {
                             let click_y = (event.position.y / px(1.0)) as f64;
                             for (top, bottom, start_ms) in &click_bands {
                                 if click_y >= *top && click_y < *bottom {
-                                    this.send_seek(start_ms / 1000.0);
+                                    this.seek_to(*start_ms);
                                     break;
                                 }
                             }
