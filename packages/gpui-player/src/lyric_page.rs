@@ -1272,6 +1272,9 @@ impl Render for LyricPage {
                         .w(px(text_width as f32))
                         .h(px(sub_h as f32))
                         .font_family(lyric_font().family)
+                        // 上游子行继承根样式字重(react-full 默认 600);
+                        // 此前漏设走 div 默认 400,细字重还会放大模糊伪影
+                        .font_weight(lyric_font().weight)
                         .text_size(px(sub_font as f32))
                         .line_height(px(sub_h as f32))
                         .text_color(gpui::hsla(0.0, 0.0, 1.0, SUB_OPACITY))

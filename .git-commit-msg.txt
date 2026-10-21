@@ -1,22 +1,23 @@
-fix(gpui-player): 点击歌词即时跳转——乐观更新 + seek 后即时补发位置
+feat(gpui-player): 翻译/音译行(上游 .lyricSubLine 的忠实移植)
 
-根因(此前探索已定位):PlayPosition 常规节奏 1s 一拍,SeekAudio 处
-理器不回传位置,点击后 UI 只能继续外推旧位置等下一个 tick——平
-均 ~500ms、最坏 1000ms 的"慢半拍"。
+上游机制(经 bundle 反查确认):react-full 实际使用 core 的
+DomLyricPlayer,每行固定 [主行, 翻译, 音译] 三个子块,静态常驻
+(无展开动画,CSS 里 opacity 过渡的值恒 0.3 从不变化);行高经
+ResizeObserver 量整行 DOM 自然含子行。
 
-三层修复:
-1. lyric_page.seek_to:点击时乐观更新 event_position_ms 为目标行
-   起点(上游浏览器对 audio.currentTime 的同款语义),下一帧歌词
-   即跳、seek 弹簧(90/15)当帧起跳;
-2. player-core SeekAudio 处理成功后立即补发一条 PlayPosition
-   (counter 已清零,position 即真实位置)——消除乐观更新后的竞
-   态:点击→处理完成之间撞上的旧位置 tick 会把 UI 拽回旧位置,
-   补发把校正窗口压到毫秒级;
-3. send_seek 噪声修复:消息通道是无界 mpsc(同步 send),复用首
-   次调用创建的静态 runtime,不再每次点击新建线程+runtime。
+移植:
+- 数据:ttml_processor 原生支持两种格式——iTunes sidecar
+  (<text for="L1">)与 inline role(ttm:role="x-translation"/
+  "x-roman",AMLL 库 TTML 常见形态,用户的流浪诗人.ttml 即此
+  格式);映射取首条非空文本(上游 toAmllLyrics 无语言偏好时的
+  回退语义),解析器对 role span 提前返回故从不混入主行 words
+- 布局:row_height(index) = font×(2.0em + 0.75em×子行数),
+  排高/视口裁剪/hover 命中/点击带/悬停框全部改走每行高度
+- 渲染:子行 div 与主行同子树(共享行级 opacity/blur 锐化/
+  0.97 缩放),位于主行正下方;样式照 CSS:字号 0.5em(min
+  10px)、line-height 1.5em、透明度 0.3
 
-端到端实测(真实点击自动化 + 时序日志):点击→补发回传
-0.6ms/6ms/5.7ms,三次点击后常规 tick 均从新位置无缝续走
-(16522←15952、28860←28530、47678←47568),零拽回。
-63 测试全绿,clippy 零告警。Tauri 版同样受益于补发(纯增量
-事件,无行为破坏)。
+验收(用户 TTML 实测行带剖面):带翻译+音译的行出现两条 17px
+矮带(0.5em ✓ 更暗 ✓ 间距 0.75em ✓)于主行下方,无数据行干净
+不占高。64 测试全绿(新增 inline role 解析映射单测),clippy
+零告警。

@@ -1218,12 +1218,14 @@ float sprite_mask_gradient_alpha(float local_x, float4 gradient) {
     return lerp(gradient.z, gradient.w, t);
 }
 
-// [AMLL patch] 字形高斯模糊核:9×9 双线性网格、步长 σ/2、覆盖 ±2σ
+// [AMLL patch] 字形高斯模糊核:17×17 双线性网格、步长 σ/4、覆盖 ±2σ
 // (CSS filter: blur(Npx) 的参数 N 即高斯标准差,MDN:"它定义了高斯
-// 函数的标准偏差值");权重 exp(-(k/2)²/2) 归一,总权重=1。采样
-// 密度必须 ≤ σ/2——间距过宽(如按 σ 间距取 5 点)会把有效核变成
-// 梳状,高频能量漏出即为"磨砂玻璃"伪影;9×9 间距 σ/2 的密集采样
-// 才得到 Web 引擎的柔和钟形。tap 落在本字形瓦片矩形外取 0
+// 函数的标准偏差值");权重 exp(-(k/4)²/2) 归一,总权重=1。采样
+// 密度必须匹配内容特征尺寸而非只看 σ:按 σ 间距取 5 点是大间距梳状
+// ("磨砂玻璃"伪影),σ/2×9 点对主行(1em/600 字重,笔画 3-4px)够密,
+// 但对 0.5em 子行(笔画 ~1.4px)在 σ≥2 时步长 ≥1px 重新梳状化;
+// σ/4×17 对最小字号(步长亚像素)到最大 σ=5(步长 1.25px,配双线性
+// 插值有效密度再减半)都保持无梳状。tap 落在本字形瓦片矩形外取 0
 // 贡献——卷积线性,Σ blur(字形)=blur(Σ 字形),瓦片外没有本字形
 // 的墨迹,置零恰为线性卷积的正确值。
 // 输入 tile_position 为图集像素空间,采样时归一化。
@@ -1234,19 +1236,21 @@ float3 blurred_glyph_rgb(float2 atlas_px, float blur_radius, float4 tile_rect) {
     if (blur_radius < 0.05) {
         return direct;
     }
-    // exp(-k²/8) for k=-4..4,归一化(总权重=1)
-    static const float W[9] = { 0.02762, 0.06629, 0.12380, 0.18017, 0.20417,
-                                0.18017, 0.12380, 0.06629, 0.02762 };
+    // exp(-k²/32) for k=-8..8,归一化(总权重=1)
+    static const float W[17] = { 0.013961, 0.022308, 0.033489, 0.047224, 0.062573,
+                                0.077873, 0.091064, 0.100003, 0.103155,
+                                0.100003, 0.091064, 0.077873, 0.062573, 0.047224,
+                                0.033489, 0.022308, 0.013961 };
     float sigma = blur_radius;
     float3 acc = 0.0;
     [unroll]
-    for (int j = -4; j <= 4; j++) {
+    for (int j = -8; j <= 8; j++) {
         [unroll]
-        for (int i = -4; i <= 4; i++) {
-            float2 px = atlas_px + float2(i, j) * (sigma * 0.5);
+        for (int i = -8; i <= 8; i++) {
+            float2 px = atlas_px + float2(i, j) * (sigma * 0.25);
             if (px.x >= tile_rect.x && px.x <= tile_rect.x + tile_rect.z
                 && px.y >= tile_rect.y && px.y <= tile_rect.y + tile_rect.w) {
-                acc += W[i + 4] * W[j + 4] * t_sprite.Sample(s_sprite, px / atlas_size).rgb;
+                acc += W[i + 8] * W[j + 8] * t_sprite.Sample(s_sprite, px / atlas_size).rgb;
             }
         }
     }
