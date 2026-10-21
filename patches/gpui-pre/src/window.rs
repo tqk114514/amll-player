@@ -4335,6 +4335,15 @@ impl Window {
         self.element_blur_radius
     }
 
+    /// [AMLL patch] 绘制 mesh 渐变背景(上游 MeshGradientRenderer):
+    /// 全屏背景层,每帧最先绘制、位于所有内容之下;每帧覆盖式设置
+    /// (单背景,调用方推进 sin/cos/volume/alpha)。
+    pub fn paint_mesh_background(&mut self, background: crate::MeshBackground) {
+        // 与作用域 API 同构:prepaint 内设置场景状态合法
+        self.invalidator.debug_assert_paint_or_prepaint();
+        self.next_frame.scene.mesh_background = Some(background);
+    }
+
     /// [AMLL patch] 像素级追踪:读回最近呈现的一帧(无平台实现时为 None)
     pub fn capture_frame_pixels(&mut self) -> Option<image::RgbaImage> {
         self.platform_window.capture_frame_pixels()

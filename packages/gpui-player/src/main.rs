@@ -38,6 +38,7 @@ fn usage() -> ! {
     eprintln!("用法: gpui-player <音频文件路径> <TTML 歌词路径>");
     eprintln!("      gpui-player --trace <out.jsonl> [--score <score.json>] [--quit-on-done] <TTML>");
     eprintln!("示例: cargo run -p gpui-player -- \"歌曲.flac\" \"歌词.ttml\"");
+    eprintln!("      可选: --cover 封面.png|jpg(指定 mesh 背景取色图)");
     std::process::exit(1);
 }
 
@@ -51,6 +52,7 @@ fn main() -> anyhow::Result<()> {
     let mut pixel_dir: Option<PathBuf> = None;
     let mut score_path: Option<PathBuf> = None;
     let mut quit_on_done = false;
+    let mut cover_path: Option<PathBuf> = None;
     let mut paths: Vec<PathBuf> = Vec::new();
     let mut index = 1;
     while index < args.len() {
@@ -75,6 +77,12 @@ fn main() -> anyhow::Result<()> {
                 ));
             }
             "--quit-on-done" => quit_on_done = true,
+            "--cover" => {
+                index += 1;
+                cover_path = Some(PathBuf::from(
+                    args.get(index).unwrap_or_else(|| usage()),
+                ));
+            }
             _ if !arg.starts_with('-') && std::path::Path::new(arg).exists() => {
                 paths.push(PathBuf::from(arg));
             }
@@ -137,6 +145,31 @@ fn main() -> anyhow::Result<()> {
         })
         .collect();
     tracing::info!("解析 TTML: {} 行", lines.len());
+
+    // mesh 渐变背景:封面 = --cover 指定图(png/jpg) > FLAC 内嵌 PICTURE
+    let mesh = (|| -> Option<crate::mesh_bg::MeshBackgroundResource> {
+        let cover_bytes = if let Some(path) = &cover_path {
+            std::fs::read(path)
+                .map_err(|e| tracing::warn!("读取封面失败 {path:?}: {e}"))
+                .ok()?
+        } else if let Some(audio) = &audio_path {
+            let bytes = std::fs::read(audio)
+                .map_err(|e| tracing::warn!("读取音频失败 {audio:?}: {e}"))
+                .ok()?;
+            let cover = crate::mesh_bg::extract_flac_cover(&bytes);
+            if cover.is_none() {
+                tracing::info!("音频无内嵌封面,跳过 mesh 背景(可用 --cover 指定)");
+            }
+            cover?
+        } else {
+            return None;
+        };
+        // id 取内容哈希:同专辑跨启动稳定(控制点摇号一致)
+        let id = cover_bytes
+            .iter()
+            .fold(0xC0FFEE_u64, |acc, byte| acc.rotate_left(8) ^ *byte as u64);
+        crate::mesh_bg::build_resource(&cover_bytes, id)
+    })();
 
     // 采集状态:--trace 开启虚拟时钟;剧本缺省时按歌词全长推导
     let max_end_ms = lines
@@ -223,7 +256,7 @@ fn main() -> anyhow::Result<()> {
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
 
-        let view = cx.new(|_| LyricPage::new(handle, lines, trace_state, pixel_dir));
+        let view = cx.new(|_| LyricPage::new(handle, lines, trace_state, pixel_dir, mesh));
 
         gpui_kit::open_window(
             WindowOptions {

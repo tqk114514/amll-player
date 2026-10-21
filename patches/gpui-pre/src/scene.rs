@@ -10,6 +10,7 @@ use crate::{
 };
 use std::{
     fmt::Debug,
+    sync::Arc,
     iter::Peekable,
     ops::{Add, Range, Sub},
     slice,
@@ -50,6 +51,8 @@ pub struct Scene {
     pub subpixel_sprites: Vec<SubpixelSprite>,
     pub polychrome_sprites: Vec<PolychromeSprite>,
     pub surfaces: Vec<PaintSurface>,
+    /// [AMLL patch] mesh 渐变背景(每帧最多一份,最先绘制)
+    pub mesh_background: Option<MeshBackground>,
 }
 
 #[expect(missing_docs)]
@@ -66,6 +69,7 @@ impl Scene {
         self.subpixel_sprites.clear();
         self.polychrome_sprites.clear();
         self.surfaces.clear();
+        self.mesh_background = None;
     }
 
     pub fn len(&self) -> usize {
@@ -527,6 +531,47 @@ impl PrimitiveBatch {
             Self::Surfaces(range) => format!("surfaces ({})", range.len()),
         }
     }
+}
+
+/// [AMLL patch] mesh 渐变背景(上游 MeshGradientRenderer):全屏背景层,
+/// 每帧最先绘制、位于所有内容之下。顶点/纹理随专辑更换(id 变更触发
+/// 渲染器重建缓存),sin/cos/volume/alpha 每帧由调用方推进。
+#[derive(Clone, Debug)]
+pub struct MeshBackground {
+    /// 资源标识
+    pub id: u64,
+    /// Hermite 细分后的网格顶点(渲染器缓存为 SRV)
+    pub vertices: Arc<Vec<MeshBackgroundVertex>>,
+    /// 单元列数(instance_id → cell 解码用)
+    pub cells_across: u32,
+    /// 单元行数
+    pub cells_down: u32,
+    /// RGBA8 处理后的专辑纹理
+    pub texture: Arc<Vec<u8>>,
+    /// 纹理宽(RGBA8)
+    pub texture_width: u32,
+    /// 纹理高(RGBA8)
+    pub texture_height: u32,
+    /// 采样旋转角 sin((u_time + u_volume)·2)(CPU 计算)
+    pub sin_angle: f32,
+    /// 采样旋转角 cos((u_time + u_volume)·2)
+    pub cos_angle: f32,
+    /// u_volume = 低频能量/10
+    pub volume: f32,
+    /// 交叉淡化后的合成 alpha
+    pub alpha: f32,
+}
+
+/// [AMLL patch] mesh 背景顶点(上游 Mesh 顶点布局 pos2+color3+uv2)
+#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+pub struct MeshBackgroundVertex {
+    /// 裁剪空间位置 [-1, 1]
+    pub pos: [f32; 2],
+    /// 顶点色(全 1.0:颜色由纹理承载)
+    pub color: [f32; 3],
+    /// 纹理坐标 [0, 1]
+    pub uv: [f32; 2],
 }
 
 #[derive(Default, Debug, Copy, Clone)]

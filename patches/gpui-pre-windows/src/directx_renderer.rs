@@ -54,6 +54,28 @@ pub(crate) struct DirectXRenderer {
     /// In that case we want to discard the first frame that we draw as we got reset in the middle of a frame
     /// meaning we lost all the allocated gpu textures and scene resources.
     skip_draws: bool,
+
+    /// [AMLL patch] mesh 渐变背景的资源缓存(按 id 重建;设备丢失时置 None)
+    mesh_cache: Option<MeshBackgroundGpuCache>,
+    /// [AMLL patch] mesh 背景每帧 uniform 快照(pre_draw 无 scene 访问)
+    cached_mesh_uniforms: [f32; 4],
+}
+
+/// [AMLL patch] mesh 背景的 GPU 资源(专辑更换时整组重建):
+/// 顶点/纹理走 IMMUTABLE 上传一次,单元实例由管线缓冲逐帧映射
+/// (静态数据但量小,免一套缓存失效逻辑)
+struct MeshBackgroundGpuCache {
+    id: u64,
+    // vertex_buffer/texture 仅持引用保活(SRV 才是绘制对象)——
+    // D3D11 的 SRV 不保活底层资源,必须由本缓存持有 COM 引用
+    #[allow(dead_code)]
+    vertex_buffer: ID3D11Buffer,
+    vertex_view: Option<ID3D11ShaderResourceView>,
+    #[allow(dead_code)]
+    texture: ID3D11Texture2D,
+    texture_view: Option<ID3D11ShaderResourceView>,
+    sampler: ID3D11SamplerState,
+    cells: Vec<MeshBackgroundCell>,
 }
 
 /// Direct3D objects
@@ -92,6 +114,8 @@ struct DirectXRenderPipelines {
     mono_sprites: PipelineState<MonochromeSprite>,
     subpixel_sprites: PipelineState<SubpixelSprite>,
     poly_sprites: PipelineState<PolychromeSprite>,
+    // [AMLL patch] mesh 渐变背景(实例缓冲 = MeshBackgroundCell)
+    mesh_background: PipelineState<MeshBackgroundCell>,
 }
 
 struct DirectXGlobalElements {
@@ -194,6 +218,8 @@ impl DirectXRenderer {
             width: 1,
             height: 1,
             skip_draws: false,
+            mesh_cache: None,
+            cached_mesh_uniforms: [0.0; 4],
         })
     }
 
@@ -218,6 +244,9 @@ impl DirectXRenderer {
                 subpixel_enhanced_contrast: self.font_info.subpixel_enhanced_contrast,
                 is_bgr: self.font_info.is_bgr as u32,
                 _pad: [0; 3],
+                // [AMLL patch] mesh 背景每帧 uniform(render 起点由
+                // cache_mesh_uniforms 从 scene 缓存;无背景时全零)
+                mesh_uniforms: self.cached_mesh_uniforms,
             }],
         )?;
         unsafe {
@@ -355,6 +384,13 @@ impl DirectXRenderer {
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
+        // [AMLL patch] 缓存 mesh 背景 uniform(pre_draw 无 scene 访问)
+        self.cached_mesh_uniforms = scene
+            .mesh_background
+            .as_ref()
+            .map(|bg| [bg.sin_angle, bg.cos_angle, bg.volume, bg.alpha])
+            .unwrap_or([0.0; 4]);
+
         self.pre_draw(&match background_appearance {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
@@ -366,6 +402,9 @@ impl DirectXRenderer {
             .as_ref()
             .and_then(|devices| devices.annotation.clone())
             .filter(|annotation| unsafe { annotation.GetStatus().as_bool() });
+        // [AMLL patch] mesh 渐变背景:最先绘制,位于所有内容之下
+        self.draw_mesh_background(scene)?;
+
         for batch in scene.batches() {
             let _annotation = annotation
                 .as_ref()
@@ -794,6 +833,108 @@ impl DirectXRenderer {
         )
     }
 
+    /// [AMLL patch] 绘制 mesh 渐变背景(上游 MeshGradientRenderer 的 D3D11
+    /// 管线):TRIANGLESTRIP × 单元实例;顶点/纹理按 id 缓存(IMMUTABLE
+    /// 一次上传),专辑更换时整组重建;无背景时直通。批量在 0 号槽
+    /// (batch_start_index)与既有管线一致,实例缓冲经 set_pipeline_state
+    /// 绑到 t1;顶点 t2、纹理 t0 + 镜像重复采样器单独绑定。
+    fn draw_mesh_background(&mut self, scene: &Scene) -> Result<()> {
+        let Some(background) = &scene.mesh_background else {
+            return Ok(());
+        };
+        if background.alpha <= 0.01 || background.cells_across == 0 || background.cells_down == 0 {
+            return Ok(());
+        }
+        let devices = self.devices.as_ref().context("devices missing")?;
+        let device_context = &devices.device_context;
+        let device = &devices.device;
+
+        // 缓存失效:id 变化 → 重建顶点缓冲/纹理/采样器/单元表
+        if self.mesh_cache.as_ref().map(|c| c.id) != Some(background.id) {
+            // 顶点缓冲(结构化、只读一次上传)
+            let vertex_bytes: Vec<u8> = background
+                .vertices
+                .iter()
+                .flat_map(|v| {
+                    // [AMLL patch] 顶点 7×f32 = 28 字节连续布局(repr(C))
+                    let mut bytes = [0u8; 28];
+                    bytes.copy_from_slice(unsafe {
+                        std::slice::from_raw_parts(
+                            v as *const gpui::MeshBackgroundVertex as *const u8,
+                            28,
+                        )
+                    });
+                    bytes.to_vec()
+                })
+                .collect();
+            let vertex_buffer = create_immutable_structured_buffer(
+                device,
+                28,
+                &vertex_bytes,
+            )?;
+            let vertex_view = create_buffer_view(device, &vertex_buffer)?;
+
+            // 专辑纹理(RGBA8 一次上传;镜像重复采样对应上游 MIRRORED_REPEAT)
+            let (texture, texture_view) = create_immutable_texture_rgba8(
+                device,
+                background.texture_width,
+                background.texture_height,
+                &background.texture,
+            )?;
+            let sampler = create_mesh_background_sampler(device)?;
+
+            // 单元表:每单元一个实例(网格行宽 = 单元列数 + 1)
+            let grid_width = background.cells_across + 1;
+            let cells: Vec<MeshBackgroundCell> = (0..background.cells_down)
+                .flat_map(|y| {
+                    (0..background.cells_across).map(move |x| MeshBackgroundCell {
+                        grid_x: x,
+                        grid_y: y,
+                        grid_width: grid_width,
+                        _pad: 0,
+                    })
+                })
+                .collect();
+
+            self.mesh_cache = Some(MeshBackgroundGpuCache {
+                id: background.id,
+                vertex_buffer,
+                vertex_view,
+                texture,
+                texture_view,
+                sampler,
+                cells,
+            });
+        }
+        let cache = self
+            .mesh_cache
+            .as_ref()
+            .context("mesh cache missing")?;
+
+        // 单元实例逐帧映射(静态数据、量小;复用管线动态缓冲机制)
+        self.pipelines
+            .mesh_background
+            .update_buffer(device, device_context, &cache.cells)?;
+
+        // 顶点缓冲(t2)需在绘制前绑定:draw_with_texture 只绑 t0/t1
+        unsafe {
+            device_context.VSSetShaderResources(2, Some(&[cache.vertex_view.clone()]));
+        }
+
+        self.pipelines.mesh_background.draw_range_with_texture(
+            device_context,
+            &[cache.texture_view.clone()],
+            self.globals
+                .batch_params_buffer
+                .as_ref()
+                .context("batch params buffer missing")?,
+            &[Some(cache.sampler.clone())],
+            0,
+            cache.cells.len() as u32,
+        )?;
+        Ok(())
+    }
+
     fn draw_monochrome_sprites(
         &mut self,
         texture_id: AtlasTextureId,
@@ -1057,6 +1198,16 @@ impl DirectXRenderPipelines {
             create_blend_state(device)?,
         )?;
 
+        // [AMLL patch] mesh 渐变背景管线(单元数按需增长;
+        // 混色走标准 alpha blend)
+        let mesh_background = PipelineState::new(
+            device,
+            "mesh_background_pipeline",
+            ShaderModule::MeshBackground,
+            16,
+            create_blend_state(device)?,
+        )?;
+
         Ok(Self {
             shadow_pipeline,
             quad_pipeline,
@@ -1066,6 +1217,7 @@ impl DirectXRenderPipelines {
             mono_sprites,
             subpixel_sprites,
             poly_sprites,
+            mesh_background,
         })
     }
 }
@@ -1133,6 +1285,8 @@ struct GlobalParams {
     subpixel_enhanced_contrast: f32,
     is_bgr: u32,
     _pad: [u32; 3],
+    // [AMLL patch] mesh 背景:sin_angle, cos_angle, volume, alpha
+    mesh_uniforms: [f32; 4],
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -1323,6 +1477,17 @@ impl<T> PipelineState<T> {
         }
         Ok(())
     }
+}
+
+/// [AMLL patch] mesh 背景实例(与 shaders.hlsl MeshBackgroundCell 镜像):
+/// 单元 → 网格坐标;grid_width 为顶点网格行宽(单元列数+1)
+#[derive(Clone, Copy)]
+#[repr(C)]
+struct MeshBackgroundCell {
+    grid_x: u32,
+    grid_y: u32,
+    grid_width: u32,
+    _pad: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -1663,6 +1828,81 @@ fn create_constant_buffer<T>(device: &ID3D11Device) -> Result<Option<ID3D11Buffe
     Ok(buffer)
 }
 
+/// [AMLL patch] 只读结构化缓冲(mesh 背景顶点:一次上传)
+fn create_immutable_structured_buffer(
+    device: &ID3D11Device,
+    element_size: usize,
+    bytes: &[u8],
+) -> Result<ID3D11Buffer> {
+    let desc = D3D11_BUFFER_DESC {
+        ByteWidth: bytes.len() as u32,
+        Usage: D3D11_USAGE_IMMUTABLE,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+        CPUAccessFlags: 0,
+        MiscFlags: D3D11_RESOURCE_MISC_BUFFER_STRUCTURED.0 as u32,
+        StructureByteStride: element_size as u32,
+    };
+    let initial = D3D11_SUBRESOURCE_DATA {
+        pSysMem: bytes.as_ptr() as *const core::ffi::c_void,
+        SysMemPitch: 0,
+        SysMemSlicePitch: 0,
+    };
+    let mut buffer = None;
+    unsafe { device.CreateBuffer(&desc, Some(&initial), Some(&mut buffer))? };
+    Ok(buffer.unwrap())
+}
+
+/// [AMLL patch] 只读 RGBA8 纹理(mesh 背景专辑图:一次上传)
+fn create_immutable_texture_rgba8(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+    bytes: &[u8],
+) -> Result<(ID3D11Texture2D, Option<ID3D11ShaderResourceView>)> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+        SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
+        Usage: D3D11_USAGE_IMMUTABLE,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+        CPUAccessFlags: 0,
+        MiscFlags: 0,
+    };
+    let initial = D3D11_SUBRESOURCE_DATA {
+        pSysMem: bytes.as_ptr() as *const core::ffi::c_void,
+        SysMemPitch: (width * 4) as u32,
+        SysMemSlicePitch: 0,
+    };
+    let mut texture = None;
+    unsafe { device.CreateTexture2D(&desc, Some(&initial), Some(&mut texture))? };
+    let texture = texture.unwrap();
+    let mut view = None;
+    unsafe { device.CreateShaderResourceView(&texture, None, Some(&mut view))? };
+    Ok((texture, view))
+}
+
+/// [AMLL patch] mesh 背景采样器:线性 + 镜像重复(上游 MIRRORED_REPEAT)
+fn create_mesh_background_sampler(device: &ID3D11Device) -> Result<ID3D11SamplerState> {
+    let desc = D3D11_SAMPLER_DESC {
+        Filter: D3D11_FILTER_MIN_MAG_MIP_LINEAR,
+        AddressU: D3D11_TEXTURE_ADDRESS_MIRROR,
+        AddressV: D3D11_TEXTURE_ADDRESS_MIRROR,
+        AddressW: D3D11_TEXTURE_ADDRESS_MIRROR,
+        MipLODBias: 0.0,
+        MaxAnisotropy: 1,
+        ComparisonFunc: D3D11_COMPARISON_ALWAYS,
+        BorderColor: [0.0; 4],
+        MinLOD: 0.0,
+        MaxLOD: D3D11_FLOAT32_MAX,
+    };
+    let mut sampler = None;
+    unsafe { device.CreateSamplerState(&desc, Some(&mut sampler))? };
+    Ok(sampler.unwrap())
+}
+
 #[inline]
 fn create_buffer(
     device: &ID3D11Device,
@@ -1768,6 +2008,7 @@ pub(crate) mod shader_resources {
     #[derive(Copy, Clone, Debug, Eq, PartialEq)]
     pub(crate) enum ShaderModule {
         Quad,
+        MeshBackground,
         Shadow,
         Underline,
         PathRasterization,
@@ -1820,6 +2061,11 @@ pub(crate) mod shader_resources {
                 ShaderModule::Quad => match target {
                     ShaderTarget::Vertex => QUAD_VERTEX_BYTES,
                     ShaderTarget::Fragment => QUAD_FRAGMENT_BYTES,
+                },
+                // [AMLL patch] mesh 渐变背景
+                ShaderModule::MeshBackground => match target {
+                    ShaderTarget::Vertex => MESH_BACKGROUND_VERTEX_BYTES,
+                    ShaderTarget::Fragment => MESH_BACKGROUND_FRAGMENT_BYTES,
                 },
                 ShaderModule::Shadow => match target {
                     ShaderTarget::Vertex => SHADOW_VERTEX_BYTES,
@@ -1932,6 +2178,7 @@ pub(crate) mod shader_resources {
         pub fn as_str(self) -> &'static str {
             match self {
                 ShaderModule::Quad => "quad",
+                ShaderModule::MeshBackground => "mesh_background",
                 ShaderModule::Shadow => "shadow",
                 ShaderModule::Underline => "underline",
                 ShaderModule::PathRasterization => "path_rasterization",

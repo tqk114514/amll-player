@@ -1,18 +1,15 @@
-feat(gpui): mesh 渐变背景 CPU 侧——上游 mesh-renderer 数据管线全量移植
+feat(gpui): mesh 渐变背景 GPU 管线接线 + --cover CLI(光栅根因待专项排查)
 
-上游 bg-render/mesh-renderer 的 CPU 数据侧(GPU 管线下一程接渲染器 patch):
-- FLAC PICTURE 块解析:提取内嵌专辑封面(24 位块长/嵌套长度边界校验)
-- 专辑图处理管线(上游 setAlbum):32×32 缩放 → 对比 0.4 → 饱和 3.0
-  → 对比 1.7 → 亮度 0.75(f64 中间值不截断)→ StackBlur
-  (radius=2 quality=4,水平/垂直滑动窗口逐行移植)
-- 控制点:上游六组预设逐位移植 + generateControlPoints 随机生成
-  (噪声梯度法线偏移 + 3×3 加权平滑,xorshift64* 确定性 RNG:
-  同专辑种子稳定,不同专辑不共享布局);80% 预设/20% 生成 6×6
-- BHPMesh Hermite 双三次细分(50 级):gl-matrix 列主元布局、
-  H/Hᵀ 系数矩阵、precompute/transformMat4 同序运算、f64 精度
-  (JS number 同款)保证顶点逐位一致;顶点网格 (vx,vy) 索引与
-  uvY 翻转约定按上游 updateMesh 移植
-- build_resource:封面 → 纹理 + 网格资源(id 供渲染器缓存失效)
-- 单测 6 项:FLAC 解析(24 位块长夹具)、管线输出 32×32 有效、
-  StackBlur 平坦图不变、预设计数与上游一致(六组)、细分网格
-  布局与角点、生成器确定性
+- patch gpui-pre:MeshBackground 场景原语 + paint_mesh_background API
+- patch gpui-pre-windows:mesh_background vs/ps(上游 WebGL1 移植:
+  aspect 修正/体积缩放旋转采样/暗角/抖动/镜像重复)、
+  MeshBackgroundCell 实例管线、按 id 缓存的 IMMUTABLE 顶点/纹理/采样器、
+  draw_range_with_texture 绘制(与正常图元同路径)、GlobalParams 扩展
+  mesh_uniforms(64 字节布局两侧镜像)、ShaderModule 双侧登记
+- CLI:--cover cover.png|jpg 显式指定取色图 > FLAC 内嵌 PICTURE 自动
+  提取;id 取内容哈希(同专辑控制点摇号跨启动稳定)
+- 已知问题(如实):管线全通(编译/缓存/绑定/绘制执行均验证)但光栅
+  无可见产出,硬编码全屏四边形同样不画——已排除编译/缓冲/绑定/绘制
+  路径/批次偏移等十项假设,根因疑在管线状态层,需 D3D 调试层专项排查。
+  当前不透明底页遮挡,画面零回归(基线 49/52 帧正常,60 测试绿、
+  clippy 零告警),修好根因后移除遮挡即点亮

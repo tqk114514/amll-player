@@ -7,6 +7,9 @@ cbuffer GlobalParams: register(b0) {
     float subpixel_enhanced_contrast;
     uint is_bgr;
     uint3 global_pad;
+    // [AMLL patch] mesh 渐变背景每帧 uniform:
+    // x=sin_angle y=cos_angle z=volume w=alpha
+    float4 mesh_uniforms;
 };
 
 cbuffer BatchParams: register(b1) {
@@ -1377,4 +1380,101 @@ float4 polychrome_sprite_fragment(PolychromeSpriteFragmentInput input): SV_Targe
     }
     color.a *= sprite.opacity * saturate(0.5 - distance);
     return color;
+}
+
+
+/*
+**
+**              [AMLL patch] Mesh 渐变背景
+**              (上游 bg-render/mesh-renderer WebGL1 shader 的 HLSL 移植)
+**
+*/
+
+// 上游 mesh.frag 内联的梯度噪声常量抖动
+float meshGradientNoise(float2 position) {
+    return frac(52.9829189 * frac(dot(position, float2(0.06711056, 0.00583715))));
+}
+
+// 实例缓冲(t1,由 set_pipeline_state 绑定):单元 → 网格坐标
+struct MeshBackgroundCell {
+    uint grid_x;
+    uint grid_y;
+    uint grid_width;
+    uint _pad;
+};
+
+StructuredBuffer<MeshBackgroundCell> mesh_background_cells: register(t1);
+// 顶点缓冲(t2,渲染器按 id 缓存):pos2 + color3 + uv2
+struct MeshBackgroundVertexData {
+    float2 pos;
+    float3 color;
+    float2 uv;
+};
+StructuredBuffer<MeshBackgroundVertexData> mesh_background_vertices: register(t2);
+// 专辑纹理(t0,32×32 处理后;镜像重复采样对应上游 MIRRORED_REPEAT)
+Texture2D<float4> mesh_background_texture: register(t0);
+SamplerState s_mesh_background: register(s0);
+
+struct MeshBackgroundVertexOutput {
+    float4 position: SV_Position;
+    nointerpolation float3 color: COLOR;
+    float2 uv: TEXCOORD0;
+};
+
+MeshBackgroundVertexOutput mesh_background_vertex(uint vertex_id: SV_VertexID, uint instance_id: SV_InstanceID) {
+    float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
+    // mesh 是整批绘制(单次 DrawInstanced,无批次偏移),instance_id
+    // 即单元绝对索引;不能加 batch_start_index(那是精灵批的遗留状态)
+    MeshBackgroundCell cell = mesh_background_cells[instance_id];
+    // 单元四角 = (grid_x, grid_y) + unit_vertex
+    uint vx = cell.grid_x + uint(unit_vertex.x);
+    uint vy = cell.grid_y + uint(unit_vertex.y);
+    MeshBackgroundVertexData v = mesh_background_vertices[vy * cell.grid_width + vx];
+
+    // 上游 mesh.vert:宽屏时拉伸 y(压扁 pos.y),竖屏时拉伸 x
+    float aspect = global_viewport_size.x / global_viewport_size.y;
+    float2 pos = v.pos;
+    if (aspect > 1.0) {
+        pos.y *= aspect;
+    } else {
+        pos.x /= aspect;
+    }
+
+    MeshBackgroundVertexOutput output;
+    output.position = float4(pos, 0.0, 1.0);
+    output.color = v.color;
+    output.uv = v.uv;
+    return output;
+}
+
+// 上游 mesh.frag:体积缩放的旋转采样 + 暗角 + 抖动 + 音量调制的 alpha
+float4 mesh_background_fragment(MeshBackgroundVertexOutput input): SV_Target {
+    float volume = mesh_uniforms.z;
+    float alpha = mesh_uniforms.w;
+    float sin_angle = mesh_uniforms.x;
+    float cos_angle = mesh_uniforms.y;
+
+    float volume_effect = volume * 2.0;
+    float dither = 0.0039 * meshGradientNoise(input.position.xy) - 0.00196;
+
+    float2 centered_uv = input.uv - float2(0.2, 0.2);
+    float2 rotated_uv = float2(
+        cos_angle * centered_uv.x - sin_angle * centered_uv.y,
+        sin_angle * centered_uv.x + cos_angle * centered_uv.y
+    );
+    float2 final_uv = rotated_uv * max(0.001, 1.0 - volume_effect) + float2(0.5, 0.5);
+
+    float4 result = mesh_background_texture.Sample(s_mesh_background, final_uv);
+
+    float alpha_volume_factor = alpha * max(0.5, 1.0 - volume * 0.5);
+    result.rgb *= input.color * alpha_volume_factor;
+    result.a *= alpha_volume_factor;
+    result.rgb += float3(dither, dither, dither);
+
+    float dist = distance(input.uv, float2(0.5, 0.5));
+    float vignette = smoothstep(0.8, 0.3, dist);
+    float mask = 0.6 + vignette * 0.4;
+    result.rgb *= mask;
+
+    return result;
 }

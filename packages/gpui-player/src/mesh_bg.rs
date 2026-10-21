@@ -1,7 +1,7 @@
 //! mesh 渐变背景 CPU 侧(上游 `bg-render/mesh-renderer` 的移植)。
 //!
-//! 本模块的产物(MeshBackgroundResource)由下一程的渲染器 patch 消费,
-//! 接线完成前仅单测调用——模块级允许 dead_code,接上后移除。
+//! 本模块的产物(MeshBackgroundResource)经渲染器 patch
+//! (paint_mesh_background)绘制。
 //!
 //! 上游机制:专辑图 32×32 化(对比 0.4 → 饱和 3.0 → 对比 1.7 →
 //! 亮度 0.75 → StackBlur radius=2 quality=4)作为纹理;Hermite 双三次
@@ -11,8 +11,6 @@
 //!
 //! 细分数学严格按上游 JS 移植:gl-matrix 列主元布局、同序运算、
 //! f64 精度(JS number 即 f64),保证顶点逐位一致。
-
-#![allow(dead_code)] // GPU 接线前仅单测消费
 
 use std::sync::Arc;
 
@@ -779,6 +777,43 @@ pub fn build_resource(cover_bytes: &[u8], id: u64) -> Option<MeshBackgroundResou
         texture_height: h,
         texture: Arc::new(texture.into_raw()),
     })
+}
+
+impl MeshBackgroundResource {
+    /// 转为 gpui 场景原语(渲染器 patch 的 MeshBackground;sin/cos/
+    /// volume/alpha 由调用方每帧推进——u_time = frame_time/10000,
+    /// angle = (u_time + volume)·2,volume = 低频/10)
+    pub fn to_scene_background(
+        &self,
+        time_ms: f64,
+        volume: f64,
+        alpha: f64,
+    ) -> gpui::MeshBackground {
+        let u_time = time_ms / 10000.0;
+        let angle = (u_time + volume) * 2.0;
+        gpui::MeshBackground {
+            id: self.id,
+            vertices: std::sync::Arc::new(
+                self.vertices
+                    .iter()
+                    .map(|v| gpui::MeshBackgroundVertex {
+                        pos: v.pos,
+                        color: v.color,
+                        uv: v.uv,
+                    })
+                    .collect(),
+            ),
+            cells_across: self.cells_across,
+            cells_down: (self.cell_count / self.cells_across.max(1)).max(1),
+            texture: self.texture.clone(),
+            texture_width: self.texture_width,
+            texture_height: self.texture_height,
+            sin_angle: angle.sin() as f32,
+            cos_angle: angle.cos() as f32,
+            volume: volume as f32,
+            alpha: alpha as f32,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -91,6 +91,31 @@ Rust 侧逐字节一致);`quad_vertex` 顶点经 `to_device_position_transformed
 快速路径,无模糊的 UI 零成本,实测前台 92fps(基线 ~115)半径 <0.05 走原单采样快速路径,未启用模糊的 UI 零成本。
 monochrome/subpixel 两条路径共用该核。
 
+## 变更点(八):mesh 背景渲染管线(上游 mesh.vert/frag 的 HLSL 移植)
+
+`src/shaders.hlsl` + `src/directx_renderer.rs` + `build.rs`(带
+`[AMLL patch]` 注释):
+- GlobalParams 追加 `mesh_uniforms`(sin/cos/volume/alpha;Rust/HLSL
+  两侧 64 字节布局镜像);mesh_background_vertex/fragment 移植上游
+  WebGL1 shader(aspect 修正、体积缩放旋转采样、暗角、抖动、镜像
+  重复采样);instance 直读(无 batch_start 偏移——mesh 为整批绘制)
+- 渲染器:PipelineState<MeshBackgroundCell>(16 字节与 HLSL 镜像)、
+  按 id 缓存的 IMMUTABLE 顶点缓冲/纹理/采样器、draw_range_with_texture
+  绘制(与所有正常图元同路径);GlobalParams 每帧注入 mesh uniform
+- ShaderModule::MeshBackground 登记(debug 运行时编译 + release
+  build.rs 预编译两侧)
+
+## 已知问题(如实记录):mesh 管线光栅无产出
+
+管线编译零错、缓存构建/绑定/绘制每帧执行(日志验证 cells=62500)、
+状态与所有正常图元同构,但像素输出为不可见。已排除:着色器编译
+(错误会阻断窗口创建)、顶点/实例缓冲内容与布局、纹理与采样器、
+batch 偏移、绘制路径(draw_with_texture 与 draw_range_with_texture
+双验证)、诊断用的硬编码全屏四边形直绘(同样无产出)。根因未定位
+——疑点在管线状态层面(如 D3D11 对多 SRV 绑定/StructuredBuffer 的
+隐式约束),需安装 D3D 调试层后专项排查。应用侧以不透明底页遮挡,
+画面零回归,mesh 每帧照常绘制,定位后仅需移除遮挡即可点亮。
+
 ## 维护
 
 升级 gpui-kit(连带 gpui-pre-windows 版本)时,对照新版

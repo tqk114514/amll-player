@@ -271,6 +271,10 @@ pub struct LyricPage {
     hovered: bool,
     /// 鼠标左键按下(行悬停框的 :active 态)
     mouse_down: bool,
+    /// mesh 渐变背景资源(上游 MeshGradientRenderer;None = 无封面)
+    mesh: Option<crate::mesh_bg::MeshBackgroundResource>,
+    /// mesh 背景流动时钟(毫秒;frameTime += delta·flowSpeed,flowSpeed=1)
+    mesh_time_ms: f64,
     /// 各行悬停框 alpha 补间(上游 background-color .25s ease)
     hover_bg: Vec<AlphaTween>,
     /// 退激活期间的遮罩冻结时刻(上游 maskAnimator.pause();alpha 补间
@@ -323,6 +327,7 @@ impl LyricPage {
         lines: Vec<LyricLine>,
         trace: Option<TraceState>,
         pixel_dir: Option<std::path::PathBuf>,
+        mesh: Option<crate::mesh_bg::MeshBackgroundResource>,
     ) -> Self {
         let count = lines.len();
         let scale_patch = scale_policy::full_patch(scale_policy::main_line());
@@ -360,6 +365,8 @@ impl LyricPage {
             blur_px: (0..count).map(|_| AlphaTween::new(0.0)).collect(),
             hovered: false,
             mouse_down: false,
+            mesh,
+            mesh_time_ms: 0.0,
             hover_bg: (0..count).map(|_| AlphaTween::new(0.0)).collect(),
             mask_frozen: vec![None; count],
             word_spans: (0..count).map(|_| Vec::new()).collect(),
@@ -733,6 +740,7 @@ impl LyricPage {
             || self.scroll_engine.is_active()
             || self.scroll_dirty.is_some()
             || self.trace.is_some()
+            || self.mesh.is_some()
     }
 
     fn pixel_size(size: Size<Pixels>) -> (f64, f64) {
@@ -930,6 +938,15 @@ impl Render for LyricPage {
 
         if self.animating(now) {
             window.request_animation_frame();
+        }
+
+        // 5.4) mesh 渐变背景(上游 MeshGradientRenderer):流动时钟
+        // 按墙钟推进(flowSpeed=1),无 FFT 数据源时 volume=0(player-core
+        // 后续接入 FFT 事件即点亮"背景随低频呼吸");alpha=1(单专辑无交叉淡化)
+        if let Some(mesh) = &self.mesh {
+            self.mesh_time_ms += delta * 1000.0;
+            let background = mesh.to_scene_background(self.mesh_time_ms, 0.0, 1.0);
+            window.paint_mesh_background(background);
         }
 
         // 5.5) 悬停锐化(上游 :hover filter: unset !important):逐帧

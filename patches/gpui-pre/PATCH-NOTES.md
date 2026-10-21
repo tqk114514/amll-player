@@ -96,6 +96,15 @@ blur_radius, f)` 与 `element_blur()`(与 with_element_transformation
 blur_radius 即高斯标准差(CSS blur(Npx) 的 N 定义为 σ,MDN 原文:
 "它定义了高斯函数的标准偏差值")。
 
+## 变更点(六):MeshBackground 场景原语(上游 MeshGradientRenderer)
+
+`src/scene.rs` + `src/window.rs`(带 `[AMLL patch]` 注释):新增
+`MeshBackground` 场景字段(每帧最多一份,最先绘制)与
+`Window::paint_mesh_background()` API(paint/prepaint 阶段设置,与
+作用域 API 同构断言)。顶点(Hermite 细分,pos2+color3+uv2)、纹理
+(RGBA8 32×32 处理后专辑图)、cells_across/down 由 CPU 侧(上游
+mesh-renderer 数据管线移植)提供;sin/cos/volume/alpha 每帧推进。
+
 ## 已知边界
 
 - `paint_emoji` 走 `PolychromeSprite`(全彩图元,无变换字段),
