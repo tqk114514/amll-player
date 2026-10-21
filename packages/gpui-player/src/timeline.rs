@@ -23,6 +23,10 @@ pub struct LyricLine {
     pub start_time_ms: f64,
     pub end_time_ms: f64,
     pub words: Vec<LyricWord>,
+    /// 翻译行文本(上游 translatedLyric:取解析器首条翻译,静态常驻子行)
+    pub translation: Option<String>,
+    /// 音译行文本(上游 romanLyric;逐词音译是另一特性,此处为行级文本)
+    pub romanization: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +41,12 @@ pub struct LyricWord {
 impl LyricLine {
     pub fn full_line_text(&self) -> String {
         self.words.iter().map(|w| w.text.as_str()).collect()
+    }
+
+    /// 翻译/音译子行数(0..=2):上游 DOM 每行固定 [主行, 翻译, 音译]
+    /// 三个子块,空块不占高;行高据此递增
+    pub fn sub_line_count(&self) -> f64 {
+        (self.translation.is_some() as u8 + self.romanization.is_some() as u8) as f64
     }
 }
 
@@ -559,6 +569,8 @@ mod tests {
                 end_time_ms: end,
                 text: text.into(),
             }],
+            translation: None,
+            romanization: None,
         }
     }
 
@@ -702,6 +714,8 @@ mod tests {
                     end_time_ms: 9000.0 + 4200.0 - 520.0,
                     text: "首行".into(),
                 }],
+                translation: None,
+                romanization: None,
             },
             LyricLine {
                 start_time_ms: 14200.0,
@@ -711,6 +725,8 @@ mod tests {
                     end_time_ms: 14200.0 + 3400.0 - 520.0,
                     text: "次行".into(),
                 }],
+                translation: None,
+                romanization: None,
             },
         ];
         optimize_lines(&mut lines);
@@ -734,6 +750,8 @@ mod tests {
                     end_time_ms: 14000.0,
                     text: "A".into(),
                 }],
+                translation: None,
+                romanization: None,
             },
             LyricLine {
                 start_time_ms: 13600.0,
@@ -743,6 +761,8 @@ mod tests {
                     end_time_ms: 16000.0,
                     text: "B".into(),
                 }],
+                translation: None,
+                romanization: None,
             },
         ];
         optimize_lines(&mut lines);
@@ -763,6 +783,8 @@ mod tests {
                     end_time_ms: 15100.0,
                     text: "A".into(),
                 }],
+                translation: None,
+                romanization: None,
             },
             LyricLine {
                 start_time_ms: 15000.0,
@@ -772,6 +794,8 @@ mod tests {
                     end_time_ms: 16000.0,
                     text: "B".into(),
                 }],
+                translation: None,
+                romanization: None,
             },
         ];
         optimize_lines(&mut lines);
@@ -796,6 +820,8 @@ mod interlude_boundary {
                 end_time_ms: 13200.0,
                 text: "前".into(),
             }],
+            translation: None,
+            romanization: None,
         }];
         let mut t = Timeline::new(lines);
         assert_eq!(t.lines[0].start_time_ms, 8400.0, "首行按上游提前 600ms");

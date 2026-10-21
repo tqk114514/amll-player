@@ -67,6 +67,13 @@ const WRAPPER_PAD_EM: f64 = 0.4;
 const LINE_HEIGHT_EM: f64 = 1.2;
 /// 单行总高:0.4 + 1.2 + 0.4 = 2.0em
 const LINE_TOTAL_EM: f64 = WRAPPER_PAD_EM * 2.0 + LINE_HEIGHT_EM;
+/// 翻译/音译子行(上游 .lyricSubLine):字号 0.5em(min 10px)、
+/// line-height 1.5em(以子行字号计)→ 每条占主字号的 0.75em;
+/// 透明度 0.3,静态常驻(上游无展开动画)
+const SUB_FONT_EM: f64 = 0.5;
+const SUB_LINE_HEIGHT_EM: f64 = 0.75;
+const SUB_MIN_FONT_PX: f64 = 10.0;
+const SUB_OPACITY: f32 = 0.3;
 /// 文字左缘内缩(--lyric-line-padding-x = 1em)
 const TEXT_INSET_X_EM: f64 = 1.0;
 /// 词 mask alpha(上游 --bright/--dark-mask-alpha;行 opacity 另行调制):
@@ -752,8 +759,20 @@ impl LyricPage {
             return false;
         };
         let y = spring.current_position();
-        let height = self.font_size * LINE_TOTAL_EM;
+        let height = self.row_height(index);
         self.container_height > 0.0 && y < self.container_height && y + height > 0.0
+    }
+
+    /// 单行总高:基础 2.0em + 每条翻译/音译子行 0.75em
+    /// (上游经 ResizeObserver 量整行 DOM,子行静态常驻、随行高入排版)
+    fn row_height(&self, index: usize) -> f64 {
+        let subs = self
+            .timeline
+            .lines()
+            .get(index)
+            .map(|l| l.sub_line_count())
+            .unwrap_or(0.0);
+        self.font_size * (LINE_TOTAL_EM + SUB_LINE_HEIGHT_EM * subs)
     }
 
     fn animating(&self, now: Instant) -> bool {
@@ -864,10 +883,10 @@ impl Render for LyricPage {
         let font_size = (height * 0.05).max(width * 0.025).max(14.0);
         if (font_size - self.font_size).abs() > 0.01 {
             self.font_size = font_size;
-            let line_height = font_size * LINE_TOTAL_EM;
             let count = self.timeline.lines().len();
             for index in 0..count {
-                self.calculator.set_line_height(index, line_height);
+                self.calculator
+                    .set_line_height(index, self.row_height(index));
             }
             // 词元 span 布局:CJK 逐字/拉丁成组/空格零时长,逐 span 测宽排位
             let font = lyric_font();
@@ -991,12 +1010,11 @@ impl Render for LyricPage {
         // 同时按鼠标纵坐标命中行,驱动行悬停框(wrapper :hover #fff1 /
         // :active #ffffff05,background-color .25s ease)
         let hovered_now = window.is_window_hovered();
-        let line_total_h = self.font_size * LINE_TOTAL_EM;
         let hover_row = if hovered_now {
             let mouse_y = (window.mouse_position().y / px(1.0)) as f64;
             (0..self.timeline.lines().len()).find(|&index| {
                 let y = self.pos_y[index].current_position();
-                mouse_y >= y && mouse_y < y + line_total_h
+                mouse_y >= y && mouse_y < y + self.row_height(index)
             })
         } else {
             None
@@ -1153,7 +1171,6 @@ impl Render for LyricPage {
         let text_width = (self.container_width - font * TEXT_INSET_X_EM * 2.0).max(0.0);
         let pad_y = font * WRAPPER_PAD_EM;
         let inset_x = font * TEXT_INSET_X_EM;
-        let line_total = font * LINE_TOTAL_EM;
         let motion_buffer = self.container_height * MOTION_BUFFER_RATIO;
         let top_bound = -(OVERSCAN_PX + motion_buffer);
         let bottom_bound = self.container_height + OVERSCAN_PX + motion_buffer;
@@ -1163,6 +1180,8 @@ impl Render for LyricPage {
         let mut click_bands: Vec<(f64, f64, f64)> = Vec::new();
         for (index, line) in self.timeline.lines().iter().enumerate() {
             let y = self.pos_y[index].current_position();
+            // 每行总高含翻译/音译子行(有则 +0.75em/条)
+            let line_total = self.row_height(index);
             if !(y <= bottom_bound && y + line_total >= top_bound) {
                 continue;
             }
@@ -1229,6 +1248,37 @@ impl Render for LyricPage {
                 .w(px(text_width as f32))
                 .h(px(line_box as f32))
                 .child(word_element);
+
+            // 行内容列:主行 + 翻译/音译子行(上游 .lyricLine 的三个
+            // 子块,共享行级 filter/transform/opacity;子行静态常驻,
+            // .lyricSubLine:0.5em 字号(min 10px)、1.5em 行高、0.3
+            // 透明度,无展开动画)
+            let sub_font = (font * SUB_FONT_EM).max(SUB_MIN_FONT_PX);
+            let sub_h = font * SUB_LINE_HEIGHT_EM;
+            let mut content = div()
+                .absolute()
+                .left(px(0.0))
+                .top(px(0.0))
+                .w(px(self.container_width as f32))
+                .h(px(line_total as f32))
+                .child(text_element);
+            let mut sub_y = pad_y + line_box;
+            for sub_text in [&line.translation, &line.romanization].into_iter().flatten() {
+                content = content.child(
+                    div()
+                        .absolute()
+                        .left(px(inset_x as f32))
+                        .top(px(sub_y as f32))
+                        .w(px(text_width as f32))
+                        .h(px(sub_h as f32))
+                        .font_family(lyric_font().family)
+                        .text_size(px(sub_font as f32))
+                        .line_height(px(sub_h as f32))
+                        .text_color(gpui::hsla(0.0, 0.0, 1.0, SUB_OPACITY))
+                        .child(sub_text.clone()),
+                );
+                sub_y += sub_h;
+            }
             children.push(
                 div()
                     .id(("lyric-line", index))
@@ -1240,7 +1290,7 @@ impl Render for LyricPage {
                     .opacity(self.line_opacity[index].sample(now) as f32)
                     .child(BlurElement::new(
                         ScaledElement::new(
-                            text_element,
+                            content,
                             scale as f32,
                             gpui::point(px(0.0), px(y as f32)),
                             gpui::point(px(0.0), px((line_box / 2.0) as f32)),

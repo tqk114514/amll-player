@@ -42,6 +42,58 @@ fn usage() -> ! {
     std::process::exit(1);
 }
 
+/// 解析器行 → 原型行结构(词粒度,供 M4 逐词渐变)。
+/// 翻译/音译取首条非空文本(上游 toAmllLyrics 无语言偏好时的回退语义)
+fn map_lyric_lines(parsed: &[ttml_processor::model::LyricLine]) -> Vec<LyricLine> {
+    parsed
+        .iter()
+        .map(|line| LyricLine {
+            start_time_ms: line.start_time as f64,
+            end_time_ms: line.end_time as f64,
+            words: line
+                .words
+                .as_ref()
+                .map(|words| {
+                    words
+                        .iter()
+                        .map(|word| LyricWord {
+                            start_time_ms: word.start_time as f64,
+                            end_time_ms: word.end_time as f64,
+                            text: format!(
+                                "{}{}",
+                                word.text,
+                                if word.ends_with_space.unwrap_or(false) {
+                                    " "
+                                } else {
+                                    ""
+                                }
+                            ),
+                        })
+                        .collect()
+                })
+                .unwrap_or_else(|| {
+                    vec![LyricWord {
+                        start_time_ms: line.start_time as f64,
+                        end_time_ms: line.end_time as f64,
+                        text: line.text.clone(),
+                    }]
+                }),
+            translation: line
+                .translations
+                .as_ref()
+                .and_then(|t| t.first())
+                .map(|t| t.text.clone())
+                .filter(|t| !t.trim().is_empty()),
+            romanization: line
+                .romanizations
+                .as_ref()
+                .and_then(|r| r.first())
+                .map(|r| r.text.clone())
+                .filter(|t| !t.trim().is_empty()),
+        })
+        .collect()
+}
+
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -108,42 +160,7 @@ fn main() -> anyhow::Result<()> {
 
     // TTML → 原型行结构(词粒度,供 M4 逐词渐变)
     let parsed = ttml_processor::parse_ttml(&ttml_content)?;
-    let lines: Vec<LyricLine> = parsed
-        .lines
-        .iter()
-        .map(|line| LyricLine {
-            start_time_ms: line.start_time as f64,
-            end_time_ms: line.end_time as f64,
-            words: line
-                .words
-                .as_ref()
-                .map(|words| {
-                    words
-                        .iter()
-                        .map(|word| LyricWord {
-                            start_time_ms: word.start_time as f64,
-                            end_time_ms: word.end_time as f64,
-                            text: format!(
-                                "{}{}",
-                                word.text,
-                                if word.ends_with_space.unwrap_or(false) {
-                                    " "
-                                } else {
-                                    ""
-                                }
-                            ),
-                        })
-                        .collect()
-                })
-                .unwrap_or_else(|| {
-                    vec![LyricWord {
-                        start_time_ms: line.start_time as f64,
-                        end_time_ms: line.end_time as f64,
-                        text: line.text.clone(),
-                    }]
-                }),
-        })
-        .collect();
+    let lines: Vec<LyricLine> = map_lyric_lines(&parsed.lines);
     tracing::info!("解析 TTML: {} 行", lines.len());
 
     // mesh 渐变背景:封面 = --cover 指定图(png/jpg) > FLAC 内嵌 PICTURE
@@ -301,6 +318,28 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// inline role 格式(ttm:role="x-translation"/"x-roman",AMLL 库
+    /// TTML 常见形态)→ 翻译/音译进子行字段、不混入主行 words;
+    /// 无 role 的行两个字段为 None
+    #[test]
+    fn inline_role_ttml_maps_translation_romanization() {
+        let ttml = r#"<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata"><body dur="00:10.000"><div><p begin="00:00.100" end="00:04.000" itunes:key="L1" xmlns:itunes="http://music.apple.com/lyric-ttml-internal"><span begin="00:00.100" end="00:01.000">海</span><span begin="00:01.000" end="00:04.000">边</span><span ttm:role="x-translation" xml:lang="zh-CN">海边测试译文</span><span ttm:role="x-roman">hái-pinn</span></p><p begin="00:05.000" end="00:09.000" itunes:key="L2"><span begin="00:05.000" end="00:09.000">纯词行</span></p></div></body></tt>"#;
+        let parsed = ttml_processor::parse_ttml(ttml).unwrap();
+        let lines = map_lyric_lines(&parsed.lines);
+
+        assert_eq!(lines.len(), 2);
+        // 主行 words 不含翻译/音译(解析器对 role span 提前返回)
+        assert_eq!(lines[0].full_line_text(), "海边");
+        assert_eq!(lines[0].translation.as_deref(), Some("海边测试译文"));
+        assert_eq!(lines[0].romanization.as_deref(), Some("hái-pinn"));
+        assert_eq!(lines[0].sub_line_count(), 2.0);
+        // 无 role 行:字段 None、子行数 0
+        assert_eq!(lines[1].full_line_text(), "纯词行");
+        assert_eq!(lines[1].translation, None);
+        assert_eq!(lines[1].romanization, None);
+        assert_eq!(lines[1].sub_line_count(), 0.0);
+    }
 
     /// 数值对比的输入一致性:Rust 侧(ttml_processor 解析 demo.ttml)必须与
     /// 浏览器 harness 直接消费的 demo-lines.json(生成器同源产出)完全一致。

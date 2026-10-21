@@ -1,22 +1,22 @@
-feat(gpui-player): FFT 低频跳动——上游 FFTToLowPassContext 逐公式移植
+fix(gpui-player): 点击歌词即时跳转——乐观更新 + seek 后即时补发位置
 
-数据链路全部复用现有设施:player-core 音频线程本就随播放无条件发射
-FFTData(50ms/128bin/80-2000Hz,与 Tauri 版同一条 FFTPlayer,数值
-口径一致),gpui 侧此前只是没人消费。
+根因(此前探索已定位):PlayPosition 常规节奏 1s 一拍,SeekAudio 处
+理器不回传位置,点击后 UI 只能继续外推旧位置等下一个 tick——平
+均 ~500ms、最坏 1000ms 的"慢半拍"。
 
-新增 mesh_bg::LowFreqVolume(上游 LocalMusicContext rAF 循环的移植):
-- 电平压缩 level(x)=0.5·log10(x/255+1),取 FFTData 前两 bin(约
-  80-110Hz 低音区)的平均
-- 10 帧滚动窗节拍检测:max²−min > 0.35 输出 max² 尖峰,否则
-  min·0.25 安静底;窗未满且无重复值时填充并输出 0
-- 0.003/ms 双向对称平滑(min/max 钳制不过冲),NaN 兜底回 1
-- Math.max/min 的 NaN 传播语义单独对齐(f64::max 会跳过 NaN,
-  上游空闲态依赖 NaN→curValue=1 的重置路径)
+三层修复:
+1. lyric_page.seek_to:点击时乐观更新 event_position_ms 为目标行
+   起点(上游浏览器对 audio.currentTime 的同款语义),下一帧歌词
+   即跳、seek 弹簧(90/15)当帧起跳;
+2. player-core SeekAudio 处理成功后立即补发一条 PlayPosition
+   (counter 已清零,position 即真实位置)——消除乐观更新后的竞
+   态:点击→处理完成之间撞上的旧位置 tick 会把 UI 拽回旧位置,
+   补发把校正窗口压到毫秒级;
+3. send_seek 噪声修复:消息通道是无界 mpsc(同步 send),复用首
+   次调用创建的静态 runtime,不再每次点击新建线程+runtime。
 
-接线:lyric_page 消费 FFTData 事件存前两 bin,每渲染帧驱动
-low_freq(与上游 rAF 每帧推窗同节奏),输出 /10 进 mesh u_volume
-(上游 setLowFreqVolume 语义)。
-
-验收:20s 实测 low 值随节拍在 0.24↔1.36 摆动(u_volume
-0.024→0.136),采样缩放 0.95→0.73、每拍旋转踢动可见;
-63 测试全绿(含 3 项 JS 对照夹具单测),clippy 零告警。
+端到端实测(真实点击自动化 + 时序日志):点击→补发回传
+0.6ms/6ms/5.7ms,三次点击后常规 tick 均从新位置无缝续走
+(16522←15952、28860←28530、47678←47568),零拽回。
+63 测试全绿,clippy 零告警。Tauri 版同样受益于补发(纯增量
+事件,无行为破坏)。
