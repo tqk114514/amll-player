@@ -74,6 +74,17 @@ const SUB_FONT_EM: f64 = 0.5;
 const SUB_LINE_HEIGHT_EM: f64 = 0.75;
 const SUB_MIN_FONT_PX: f64 = 10.0;
 const SUB_OPACITY: f32 = 0.3;
+/// [BG] 背景人声行(上游 .lyricBgLine/bgWrapper):字号 0.7em(min
+/// 10px)、行透明度 0.4;每行文本块高 ≈ 1.6em(1.2em 行盒 + 1.2em
+/// 内边距与 -1em 外边距的净 0.4em,由 CSS 推导)
+const BG_FONT_EM: f64 = 0.7;
+const BG_MIN_FONT_PX: f64 = 10.0;
+const BG_ROW_EM: f64 = 1.6;
+const BG_OPACITY: f32 = 0.4;
+/// bgSlideY 隐藏位(百分比;translateY = slide/100×bg 高)
+const BG_SLIDE_HIDDEN: f64 = -80.0;
+/// bgWrapper 透明度过渡(上游 transition: opacity .3s ease)
+const BG_OPACITY_TRANSITION_SEC: f64 = 0.3;
 /// 文字左缘内缩(--lyric-line-padding-x = 1em)
 const TEXT_INSET_X_EM: f64 = 1.0;
 /// 词 mask alpha(上游 --bright/--dark-mask-alpha;行 opacity 另行调制):
@@ -299,6 +310,13 @@ pub struct LyricPage {
     /// 普通块,CSS 自然换行即贪婪断行)
     sub_translation_rows: Vec<Vec<String>>,
     sub_roman_rows: Vec<Vec<String>>,
+    /// [BG] 背景人声断行后的行文本(贪婪断行,与子行同机制)
+    bg_rows: Vec<Vec<String>>,
+    /// [BG] bgSlideY 弹簧(百分比:-80 隐藏 → 0 展示;上游与 posY
+    /// 同参数、同 delay)
+    bg_slide: Vec<Spring>,
+    /// [BG] bgWrapper 透明度补间(上游 isActive 类切换的 .3s ease)
+    bg_opacity: Vec<AlphaTween>,
     /// 入场(2H 滑入)是否完成
     entered: bool,
     /// 强制重排版(首帧/尺寸变化/播放状态翻转)
@@ -391,6 +409,9 @@ impl LyricPage {
             word_spans: (0..count).map(|_| Vec::new()).collect(),
             sub_translation_rows: (0..count).map(|_| Vec::new()).collect(),
             sub_roman_rows: (0..count).map(|_| Vec::new()).collect(),
+            bg_rows: (0..count).map(|_| Vec::new()).collect(),
+            bg_slide: (0..count).map(|_| Spring::new(BG_SLIDE_HIDDEN)).collect(),
+            bg_opacity: (0..count).map(|_| AlphaTween::new(0.0)).collect(),
             entered: false,
             layout_dirty: true,
             current_stiffness: 0.0,
@@ -592,6 +613,14 @@ impl LyricPage {
             None
         };
 
+        // [BG] 动态行高刷新:激活行 bgWrapper 占位/退激活不占,
+        // 上游类切换 + ResizeObserver 重排的等价物(高度瞬变,
+        // posY 弹簧吸收位移)
+        for index in 0..count {
+            self.calculator
+                .set_line_height(index, self.row_height(index));
+        }
+
         let mut ctx = FrameContext {
             container_height: self.container_height,
             align_position: ALIGN_POSITION,
@@ -647,11 +676,9 @@ impl LyricPage {
         // scale、文本 alpha 与行 opacity 目标(上游 setLineTransformations +
         // resolveOpacity,每次排版全量设置;过渡在补间中还原 CSS transition)
         let highlighted: &[usize] = self.timeline.highlighted();
-        let latest = self.timeline.latest_highlighted().unwrap_or(scroll_to);
         let now = Instant::now();
-        for index in 0..count {
-            let active =
-                highlighted.contains(&index) || (index >= scroll_to && index < latest);
+        for (index, &delay) in delays.iter().enumerate() {
+            let active = self.is_line_active(index);
             let scale_target = if active || !self.playing {
                 100.0
             } else {
@@ -684,6 +711,23 @@ impl LyricPage {
                 LINE_BLUR_TRANSITION_SEC,
                 TweenEasing::Ease,
             );
+            // [BG] bgWrapper 滑入滑出(上游 bgSlideY:与 posY 同弹簧
+            // 参数、同 delay;目标 active||!playing → 0,否则 -80
+            // 隐藏位)。透明度随 isActive 类切换 .3s ease
+            if !self.bg_rows[index].is_empty() {
+                let target = if active || !self.playing {
+                    0.0
+                } else {
+                    BG_SLIDE_HIDDEN
+                };
+                self.bg_slide[index].set_target_position(target, delay);
+                self.bg_opacity[index].retarget_eased(
+                    if active { 1.0 } else { 0.0 },
+                    now,
+                    BG_OPACITY_TRANSITION_SEC,
+                    TweenEasing::Ease,
+                );
+            }
             // 退激活:冻结遮罩推进与 float 起点,进入反演回落;
             // 重新激活则回到媒体驱动(上游 enable 重设动画时钟)
             if active {
@@ -769,9 +813,19 @@ impl LyricPage {
         self.container_height > 0.0 && y < self.container_height && y + height > 0.0
     }
 
+    /// 行激活判定(上游 setLineTransformations 的 isActive:高亮集合
+    /// 或 scroll_to..latest 播放区间)
+    fn is_line_active(&self, index: usize) -> bool {
+        let highlighted = self.timeline.highlighted();
+        let scroll_to = self.timeline.scroll_to_index();
+        let latest = self.timeline.latest_highlighted().unwrap_or(scroll_to);
+        highlighted.contains(&index) || (index >= scroll_to && index < latest)
+    }
+
     /// 单行总高:基础 2.0em + 主行断行每多一行 +1.2em + 翻译/音译子行
     /// 每行 +0.75em(上游经 ResizeObserver 量整行 DOM;子行/断行随
-    /// 排版自然计入)
+    /// 排版自然计入)+ [BG] 激活行的 bgWrapper 占位(relative),
+    /// 退激活不占(上游类切换,布局高瞬变、posY 弹簧吸收位移)
     fn row_height(&self, index: usize) -> f64 {
         let wrap_rows = self
             .word_spans
@@ -789,10 +843,15 @@ impl LyricPage {
                 .get(index)
                 .map(|v| v.len())
                 .unwrap_or(0);
-        self.font_size
-            * (LINE_TOTAL_EM
-                + LINE_HEIGHT_EM * (wrap_rows - 1.0)
-                + SUB_LINE_HEIGHT_EM * sub_rows as f64)
+        let mut em = LINE_TOTAL_EM
+            + LINE_HEIGHT_EM * (wrap_rows - 1.0)
+            + SUB_LINE_HEIGHT_EM * sub_rows as f64;
+        let bg_rows = self.bg_rows.get(index).map(|v| v.len()).unwrap_or(0);
+        if bg_rows > 0 && self.is_line_active(index) {
+            let bg_font = (self.font_size * BG_FONT_EM).max(BG_MIN_FONT_PX);
+            em += BG_ROW_EM * bg_font / self.font_size * bg_rows as f64;
+        }
+        self.font_size * em
     }
 
     fn animating(&self, now: Instant) -> bool {
@@ -956,31 +1015,36 @@ impl Render for LyricPage {
                 }
                 self.word_spans[index] = spans;
 
-                // [wrap] 翻译/音译子行:贪婪断行(上游子行为普通块,
-                // CSS 自然换行即贪婪),逐行存文本
-                let wrap_sub = |text: &Option<String>| -> Vec<String> {
-                    let Some(text) = text else { return Vec::new() };
-                    let mut children = crate::line_break::chunk_text(text);
-                    for child in &mut children {
-                        child.width = measure(&child.text, sub_font);
-                    }
-                    let breaks =
-                        crate::line_break::greedy_breaks(&children, text_width_avail);
-                    let mut rows = vec![String::new()];
-                    let mut next_break = 0usize;
-                    for (child_index, child) in children.iter().enumerate() {
-                        if next_break < breaks.len() && breaks[next_break] == child_index {
-                            rows.push(String::new());
-                            next_break += 1;
+                // [wrap] 贪婪断行(上游子行/BG 为普通块,CSS 自然换行
+                // 即贪婪),逐行存文本;翻译/音译用子行字号,BG 用 0.7em
+                let wrap_text_rows =
+                    |text: &Option<String>, font_px: f64| -> Vec<String> {
+                        let Some(text) = text else { return Vec::new() };
+                        let mut children = crate::line_break::chunk_text(text);
+                        for child in &mut children {
+                            child.width = measure(&child.text, font_px);
                         }
-                        rows.last_mut().expect("非空").push_str(&child.text);
-                    }
-                    // 空白子行(全空白)不占行;纯空白行丢弃
-                    rows.retain(|r| !r.trim().is_empty());
-                    rows
-                };
-                self.sub_translation_rows[index] = wrap_sub(&line.translation);
-                self.sub_roman_rows[index] = wrap_sub(&line.romanization);
+                        let breaks =
+                            crate::line_break::greedy_breaks(&children, text_width_avail);
+                        let mut rows = vec![String::new()];
+                        let mut next_break = 0usize;
+                        for (child_index, child) in children.iter().enumerate() {
+                            if next_break < breaks.len()
+                                && breaks[next_break] == child_index
+                            {
+                                rows.push(String::new());
+                                next_break += 1;
+                            }
+                            rows.last_mut().expect("非空").push_str(&child.text);
+                        }
+                        // 纯空白行丢弃(不占高)
+                        rows.retain(|r| !r.trim().is_empty());
+                        rows
+                    };
+                self.sub_translation_rows[index] = wrap_text_rows(&line.translation, sub_font);
+                self.sub_roman_rows[index] = wrap_text_rows(&line.romanization, sub_font);
+                let bg_font = (font_size * BG_FONT_EM).max(BG_MIN_FONT_PX);
+                self.bg_rows[index] = wrap_text_rows(&line.bg_vocal, bg_font);
             }
             // 行高:排高依赖 span 断行与子行行数,须在 span 构建后设置
             let count = self.timeline.lines().len();
@@ -1058,6 +1122,10 @@ impl Render for LyricPage {
         }
         self.dots_y.update(delta);
         for spring in &mut self.scale {
+            spring.update(delta);
+        }
+        // [BG] bgSlideY 弹簧推进(漏了这一步曾导致滑入永不发生)
+        for spring in &mut self.bg_slide {
             spring.update(delta);
         }
         for phase in &mut self.float_phase {
@@ -1371,6 +1439,91 @@ impl Render for LyricPage {
                     sub_y += sub_h;
                 }
             }
+            // [BG] bgWrapper(上游 LyricLineGroup.renderStyles):滑入
+            // 滑出 = slide%→translateY(slide/100×bg 高)+ scale
+            // (0.8+0.2·progress,origin left top);透明度 isActive 类
+            // 的 .3s ease;与主行同处行级 filter/opacity 作用域,但
+            // 不吃主行 0.97 缩放(上游 bgWrapper 是 .lyricLine 的兄弟)
+            let bg_font = (font * BG_FONT_EM).max(BG_MIN_FONT_PX);
+            let bg_row_h = bg_font * BG_ROW_EM;
+            let bg_rows = &self.bg_rows[index];
+            let bg_element = if bg_rows.is_empty() {
+                None
+            } else {
+                let slide = self.bg_slide[index].current_position();
+                let progress = (1.0 - slide.abs() / 80.0).clamp(0.0, 1.0);
+                let bg_opacity = self.bg_opacity[index].sample(now);
+                if progress <= 0.01 || bg_opacity <= 0.005 {
+                    None
+                } else {
+                    let bg_h_total = bg_row_h * bg_rows.len() as f64;
+                    let translate_y = slide / 100.0 * bg_h_total;
+                    let bg_scale = (0.8 + progress * 0.2) as f32;
+                    let mut bg_content = div()
+                        .absolute()
+                        .left(px(inset_x as f32))
+                        .top(px(0.0))
+                        .w(px(text_width as f32))
+                        .h(px(bg_h_total as f32));
+                    for (row_index, bg_text) in bg_rows.iter().enumerate() {
+                        bg_content = bg_content.child(
+                            div()
+                                .absolute()
+                                .left(px(0.0))
+                                .top(px((row_index as f64 * bg_row_h) as f32))
+                                .w(px(text_width as f32))
+                                .h(px(bg_row_h as f32))
+                                .font_family(lyric_font().family)
+                                .font_weight(lyric_font().weight)
+                                .text_size(px(bg_font as f32))
+                                .line_height(px((bg_font * LINE_HEIGHT_EM) as f32))
+                                .text_color(gpui::hsla(0.0, 0.0, 1.0, BG_OPACITY))
+                                .child(bg_text.clone()),
+                        );
+                    }
+                    Some(
+                        div()
+                            .absolute()
+                            .left(px(0.0))
+                            .top(px(sub_y as f32))
+                            .w(px(self.container_width as f32))
+                            .h(px(bg_h_total as f32))
+                            .opacity(bg_opacity as f32)
+                            .child(ScaledElement::new(
+                                bg_content,
+                                bg_scale,
+                                // 行位置 y 与滑动偏移合并进同一矩阵
+                                // (主行的 y 也由矩阵携带,bg 不吃主行缩放)
+                                gpui::point(
+                                    px(0.0),
+                                    px((y + translate_y) as f32),
+                                ),
+                                gpui::point(px(0.0), px(0.0)),
+                            )),
+                    )
+                }
+            };
+            // 主行内容与 BG 同层(上游 .lyricLine 与 bgWrapper 是兄弟,
+            // 共享行级 filter);BG 排在其后
+            let mut combined = div()
+                .absolute()
+                .left(px(0.0))
+                .top(px(0.0))
+                .w(px(self.container_width as f32))
+                .h(px(line_total as f32))
+                .child(ScaledElement::new(
+                    content,
+                    scale as f32,
+                    gpui::point(px(0.0), px(y as f32)),
+                    // [wrap] 缩放枢轴随主行多行高度居中
+                    gpui::point(
+                        px(0.0),
+                        px((line_box * main_rows as f64 / 2.0) as f32),
+                    ),
+                ));
+            if let Some(bg_element) = bg_element {
+                combined = combined.child(bg_element);
+            }
             children.push(
                 div()
                     .id(("lyric-line", index))
@@ -1381,16 +1534,7 @@ impl Render for LyricPage {
                     .h(px(line_total as f32))
                     .opacity(self.line_opacity[index].sample(now) as f32)
                     .child(BlurElement::new(
-                        ScaledElement::new(
-                            content,
-                            scale as f32,
-                            gpui::point(px(0.0), px(y as f32)),
-                            // [wrap] 缩放枢轴随主行多行高度居中
-                            gpui::point(
-                                px(0.0),
-                                px((line_box * main_rows as f64 / 2.0) as f32),
-                            ),
-                        ),
+                        combined,
                         self.blur_px[index].sample(now),
                     ))
                     .into_any_element(),

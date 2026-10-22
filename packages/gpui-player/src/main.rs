@@ -91,6 +91,12 @@ fn map_lyric_lines(parsed: &[ttml_processor::model::LyricLine]) -> Vec<LyricLine
                 .and_then(|r| r.first())
                 .map(|r| r.text.clone())
                 .filter(|t| !t.trim().is_empty()),
+            // [BG] 背景人声(解析器 background_vocal,行内 x-bg span)
+            bg_vocal: line
+                .background_vocal
+                .as_ref()
+                .map(|bg| bg.text.clone())
+                .filter(|t| !t.trim().is_empty()),
         })
         .collect()
 }
@@ -319,6 +325,25 @@ fn main() -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// x-bg 容器 span(带嵌套逐词 span)→ background_vocal
+    #[test]
+    fn bg_fixture_parses_xbg_container() {
+        let ttml = std::fs::read_to_string("testdata/wrap-bg.ttml").unwrap();
+        let parsed = ttml_processor::parse_ttml(&ttml).unwrap();
+        assert_eq!(parsed.lines.len(), 5, "行数");
+        let bg = parsed.lines[4]
+            .background_vocal
+            .as_ref()
+            .expect("L5 应有 background_vocal");
+        assert!(bg.text.contains("背景人声第一句"), "文本: {}", bg.text);
+        assert!(bg.text.contains("背景人声第二句"), "文本: {}", bg.text);
+        let lines = map_lyric_lines(&parsed.lines);
+        assert_eq!(
+            lines[4].bg_vocal.as_deref(),
+            Some("背景人声第一句) (背景人声第二句")
+        );
+    }
 
     /// inline role 格式(ttm:role="x-translation"/"x-roman",AMLL 库
     /// TTML 常见形态)→ 翻译/音译进子行字段、不混入主行 words;

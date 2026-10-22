@@ -27,6 +27,9 @@ pub struct LyricLine {
     pub translation: Option<String>,
     /// 音译行文本(上游 romanLyric;逐词音译是另一特性,此处为行级文本)
     pub romanization: Option<String>,
+    /// [BG] 背景人声文本(解析器 background_vocal,行内 x-bg span;
+    /// 上游挂 bgWrapper 于主行下方,激活时滑入占位、退激活滑出)
+    pub bg_vocal: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -573,6 +576,7 @@ mod tests {
             }],
             translation: None,
             romanization: None,
+            bg_vocal: None,
         }
     }
 
@@ -718,6 +722,7 @@ mod tests {
                 }],
                 translation: None,
                 romanization: None,
+                bg_vocal: None,
             },
             LyricLine {
                 start_time_ms: 14200.0,
@@ -729,6 +734,7 @@ mod tests {
                 }],
                 translation: None,
                 romanization: None,
+                bg_vocal: None,
             },
         ];
         optimize_lines(&mut lines);
@@ -754,6 +760,7 @@ mod tests {
                 }],
                 translation: None,
                 romanization: None,
+                bg_vocal: None,
             },
             LyricLine {
                 start_time_ms: 13600.0,
@@ -765,6 +772,7 @@ mod tests {
                 }],
                 translation: None,
                 romanization: None,
+                bg_vocal: None,
             },
         ];
         optimize_lines(&mut lines);
@@ -787,6 +795,7 @@ mod tests {
                 }],
                 translation: None,
                 romanization: None,
+                bg_vocal: None,
             },
             LyricLine {
                 start_time_ms: 15000.0,
@@ -798,6 +807,7 @@ mod tests {
                 }],
                 translation: None,
                 romanization: None,
+                bg_vocal: None,
             },
         ];
         optimize_lines(&mut lines);
@@ -824,6 +834,7 @@ mod interlude_boundary {
             }],
             translation: None,
             romanization: None,
+            bg_vocal: None,
         }];
         let mut t = Timeline::new(lines);
         assert_eq!(t.lines[0].start_time_ms, 8400.0, "首行按上游提前 600ms");
