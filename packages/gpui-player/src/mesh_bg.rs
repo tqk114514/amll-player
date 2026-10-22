@@ -828,6 +828,12 @@ impl MeshBackgroundResource {
 /// lowFreqVolumeAtom 的 curValue,mesh 侧再 /10 进 u_volume(上游
 /// `setLowFreqVolume(v) → volume = v/10`)。
 ///
+/// [AMLL] 刻意偏离上游一处:节拍检测加滞回(进入 0.35 / 退出 0.25)
+/// 与 150ms 最小保持。上游是单阈值 bang-bang——持续低音段窗内 max²
+/// 在阈值附近徘徊时输出逐帧翻转,而 volume 直接进采样角
+/// (u_time+volume)·2,翻转即纹理位置抖动(实测"背景卡卡的"根因)。
+/// 踢击的进入条件与输出值(max² 跟窗自然衰减)不变,只是不抖了。
+///
 /// 注意:上游 rAF 循环每帧(非每 FFT 事件)把当前 bin 值推入窗口,
 /// 重复值会连续占窗——本移植保持同节奏,由渲染循环每帧驱动 update。
 pub struct LowFreqVolume {
@@ -838,12 +844,23 @@ pub struct LowFreqVolume {
     /// 首帧标记(上游首帧 delta 巨大会经 clamp 直接吸附到目标值;
     /// 此处按新开页面语义取 delta=0)
     initialized: bool,
+    /// [AMLL] 尖峰保持状态(滞回):当前处于节拍尖峰
+    in_spike: bool,
+    /// [AMLL] 尖峰已持续时长(毫秒;新的强拍重置)
+    spike_age_ms: f64,
 }
 
 /// 上游 gradient 滑动窗长度
 const GRADIENT_WINDOW: usize = 10;
 /// 上游节拍尖峰判定阈值(difference > 0.35)
 const BEAT_DIFFERENCE: f64 = 0.35;
+/// [AMLL] 尖峰退出阈值(滞回下沿):上游是同一 0.35 单阈值 bang-bang,
+/// 持续低音段 max² 在阈值附近徘徊时输出逐帧翻转,经 volume 直进
+/// 采样角表现为背景纹理抖动;进入仍用上游 0.35,退出降到 0.25
+const BEAT_EXIT_DIFFERENCE: f64 = 0.25;
+/// [AMLL] 尖峰最小保持(毫秒):约等于一个满窗的滞留时长(10 帧 ≈
+/// 167ms@60fps),短促尖峰不会被削,徘徊不会被切成碎抖
+const BEAT_MIN_HOLD_MS: f64 = 150.0;
 /// 上游平滑速率(0.003/ms;16.7ms 帧 ≈ 每帧 5%)
 const SMOOTH_RATE: f64 = 0.003;
 
@@ -865,6 +882,8 @@ impl LowFreqVolume {
             cur_value: 1.0,
             gradient: Vec::new(),
             initialized: false,
+            in_spike: false,
+            spike_age_ms: 0.0,
         }
     }
 
@@ -872,7 +891,7 @@ impl LowFreqVolume {
     /// `delta_ms` 为帧间隔毫秒;返回平滑后的当前值(未 /10)。
     pub fn update(&mut self, bins: [f64; 2], delta_ms: f64) -> f64 {
         let volume = (amplitude_to_level(bins[0]) + amplitude_to_level(bins[1])) * 0.5;
-        let value = self.calculate_gradient(volume);
+        let value = self.calculate_gradient(volume, delta_ms);
         if !self.initialized {
             self.initialized = true;
             return self.cur_value;
@@ -893,7 +912,8 @@ impl LowFreqVolume {
 
     /// 上游 calculateGradient:窗未满且无重复值 → 填充并返回 0;
     /// 否则滑窗推进,节拍判定输出 max²(尖峰)或 min·0.25(底)。
-    fn calculate_gradient(&mut self, volume: f64) -> f64 {
+    /// delta_ms 供 [AMLL] 滞回的尖峰保持计时。
+    fn calculate_gradient(&mut self, volume: f64, delta_ms: f64) -> f64 {
         if self.gradient.len() < GRADIENT_WINDOW && !self.gradient.contains(&volume) {
             self.gradient.push(volume);
             return 0.0;
@@ -919,7 +939,26 @@ impl LowFreqVolume {
         }
         let max_sq = max_in_interval * max_in_interval;
         let difference = max_sq - min_in_interval;
-        if difference > BEAT_DIFFERENCE {
+        // [AMLL] 滞回 + 最小保持(上游为无滞回 bang-bang,见常量注释):
+        // 进入尖峰仍用上游阈值;尖峰中输出持续跟随窗内 max²(随窗口
+        // 滑出自然衰减),只有"已保持 ≥150ms 且 diff 降到 0.25 以下"
+        // 才回落到底——徘徊在阈值附近时不再逐帧翻转
+        if !self.in_spike {
+            if difference > BEAT_DIFFERENCE {
+                self.in_spike = true;
+                self.spike_age_ms = 0.0;
+            }
+        } else {
+            self.spike_age_ms += delta_ms;
+            if difference > BEAT_DIFFERENCE {
+                // 新的强拍重置保持
+                self.spike_age_ms = 0.0;
+            }
+            if self.spike_age_ms >= BEAT_MIN_HOLD_MS && difference < BEAT_EXIT_DIFFERENCE {
+                self.in_spike = false;
+            }
+        }
+        if self.in_spike {
             max_sq
         } else {
             min_in_interval * 0.25
@@ -1068,5 +1107,65 @@ mod tests {
             assert!(cur.is_finite(), "{cur}");
         }
         assert_eq!(lf.cur_value, 1.0);
+    }
+
+    /// [AMLL] 滞回:徘徊在阈值带(0.25–0.35)不再逐帧翻转——尖峰保持
+    /// 输出窗内 max²(随窗口滑出自然衰减),只有真正安静(diff<0.25)
+    /// 且已保持 ≥150ms 才回落;刚进入时即使立即安静也保持满 150ms
+    #[test]
+    fn beat_hysteresis_holds_through_threshold_band() {
+        let mut lf = LowFreqVolume::new();
+        let d = 16.667;
+        // 填窗:10 个不同值 0.40..0.85(返回 0,不进尖峰)
+        for i in 0..10 {
+            let v = 0.40 + 0.05 * i as f64;
+            assert_eq!(lf.calculate_gradient(v, d), 0.0, "填充期应返回 0");
+        }
+        // 强拍进入:0.95 → max²=0.9025, min=0.45, diff=0.4525 > 0.35
+        let enter = lf.calculate_gradient(0.95, d);
+        assert!((enter - 0.9025).abs() < 1e-9, "{enter}");
+        assert!(lf.in_spike);
+        // 紧随安静帧:0.95 仍在窗内 → diff>0.35,输出仍为窗内 max²
+        let hold = lf.calculate_gradient(0.30, d);
+        assert!((hold - 0.9025).abs() < 1e-9, "保持期内应输出窗内 max²:{hold}");
+        // 安静持续:0.95 在窗内期间(约 10 帧)age 持续被重置;
+        // 滑出后 diff<0.25,age 自零累计 ≥150ms(≈9 帧)才退出
+        for _ in 0..25 {
+            lf.calculate_gradient(0.30, d);
+        }
+        assert!(!lf.in_spike, "保持期满且安静应退出尖峰");
+        let floor = lf.calculate_gradient(0.30, d);
+        assert!((floor - 0.075).abs() < 1e-9, "退出后应输出 min·0.25:{floor}");
+    }
+
+    /// [AMLL] 滞回带内保持:diff 落在 0.25–0.35(上游会翻成底的徘徊
+    /// 区)时保持尖峰、输出跟随窗内 max²,而非翻转
+    #[test]
+    fn beat_hysteresis_suppresses_band_flicker() {
+        let mut lf = LowFreqVolume::new();
+        let d = 16.667;
+        // 填窗:10 个不同值(0.36..0.52 步进 0.02 + 0.82)
+        for v in [0.36, 0.38, 0.40, 0.42, 0.44, 0.46, 0.48, 0.50, 0.52, 0.82] {
+            lf.calculate_gradient(v, d);
+        }
+        // 强拍 0.99 进入:max²=0.9801, min=0.38 → diff=0.6021 > 0.35
+        lf.calculate_gradient(0.99, d);
+        assert!(lf.in_spike);
+        // 9 帧安静把 0.99 推到窗头(期间 diff 仍 >0.35,age 重置)
+        for _ in 0..9 {
+            lf.calculate_gradient(0.36, d);
+        }
+        // 第 10 帧推 0.82:0.99 滑出,窗尾 0.82 → max²=0.6724,
+        // min=0.36,diff=0.3124 落进徘徊带(0.25–0.35)——
+        // 上游在这里翻成底(0.36·0.25),滞回保持尖峰
+        let held = lf.calculate_gradient(0.82, d);
+        assert!(lf.in_spike, "徘徊带内应保持尖峰");
+        assert!((held - 0.6724).abs() < 1e-9, "保持输出窗内 max²:{held}");
+        // 继续安静:0.82 在窗内期间 diff=0.3124 ≥0.25 仍保持;
+        // 滑出后 diff<0.25 且 age 累计超限 → 退出
+        for _ in 0..20 {
+            lf.calculate_gradient(0.36, d);
+        }
+        assert!(!lf.in_spike, "安静且保持期满应退出");
     }
 }

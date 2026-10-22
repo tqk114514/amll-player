@@ -1,23 +1,20 @@
-feat(gpui-player): 翻译/音译行(上游 .lyricSubLine 的忠实移植)
+fix(gpui-player): 翻译/音译行字重与模糊质感——核按内容特征尺寸重定密
 
-上游机制(经 bundle 反查确认):react-full 实际使用 core 的
-DomLyricPlayer,每行固定 [主行, 翻译, 音译] 三个子块,静态常驻
-(无展开动画,CSS 里 opacity 过渡的值恒 0.3 从不变化);行高经
-ResizeObserver 量整行 DOM 自然含子行。
+两处修复:
 
-移植:
-- 数据:ttml_processor 原生支持两种格式——iTunes sidecar
-  (<text for="L1">)与 inline role(ttm:role="x-translation"/
-  "x-roman",AMLL 库 TTML 常见形态,用户的流浪诗人.ttml 即此
-  格式);映射取首条非空文本(上游 toAmllLyrics 无语言偏好时的
-  回退语义),解析器对 role span 提前返回故从不混入主行 words
-- 布局:row_height(index) = font×(2.0em + 0.75em×子行数),
-  排高/视口裁剪/hover 命中/点击带/悬停框全部改走每行高度
-- 渲染:子行 div 与主行同子树(共享行级 opacity/blur 锐化/
-  0.97 缩放),位于主行正下方;样式照 CSS:字号 0.5em(min
-  10px)、line-height 1.5em、透明度 0.3
+1. 字重:子行 div 此前漏设 font_weight(走默认 400),而上游
+   子行继承根样式字重(react-full 默认 600)。补 .font_weight。
+2. 模糊"老式玻璃"复发:根因是采样密度只看了 σ 没看内容特征
+   尺寸。σ/2 步长 × 9×9 对主行(1em/600,笔画 3-4px)够密,
+   但对 0.5em/400 的子行(笔画 ~1.4px)在 σ≥2 时步长 ≥1px,
+   细笔画重新梳状化——与上次按 σ 间距 5 点的伪影同机理,只是
+   特征尺寸更小。核重定为 17×17、步长 σ/4:最小字号下步长
+   亚像素,σ=5 时 1.25px 且双线性插值把有效密度再减半,全程
+   无梳状;±2σ 覆盖与权重归一不变(权重 exp(-(k/4)²/2) 与 σ
+   无关,静态表)。
 
-验收(用户 TTML 实测行带剖面):带翻译+音译的行出现两条 17px
-矮带(0.5em ✓ 更暗 ✓ 间距 0.75em ✓)于主行下方,无数据行干净
-不占高。64 测试全绿(新增 inline role 解析映射单测),clippy
-零告警。
+验证:子行字形带峰值 54/128 → 103/201(墨迹更实,音译带已
+接近主行水平);分通道分析排除亚像素彩边(R-B 差为背景本底)。
+上游口径复核:blur(Npx) 绝对像素作用于整行(含子行)、react-full
+默认字重 600——半径与单位均无错,错在核密度假设。
+64 测试绿,clippy 零告警;PATCH-NOTES 核描述同步更新。
