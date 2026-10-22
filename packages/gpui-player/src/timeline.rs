@@ -44,7 +44,9 @@ impl LyricLine {
     }
 
     /// 翻译/音译子行数(0..=2):上游 DOM 每行固定 [主行, 翻译, 音译]
-    /// 三个子块,空块不占高;行高据此递增
+    /// 三个子块,空块不占高。行高已改用断行后的行数(sub_*_rows),
+    /// 本方法保留为数据语义与单测断言
+    #[allow(dead_code)]
     pub fn sub_line_count(&self) -> f64 {
         (self.translation.is_some() as u8 + self.romanization.is_some() as u8) as f64
     }

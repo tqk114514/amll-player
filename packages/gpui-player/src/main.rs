@@ -8,6 +8,7 @@
 //! `--trace` 启用确定性虚拟时钟并逐帧记录,供与上游 DOM 版数值对比。
 
 mod layout;
+mod line_break;
 mod lyric_page;
 mod spring;
 mod dots;

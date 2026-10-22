@@ -295,6 +295,10 @@ pub struct LyricPage {
     mask_frozen: Vec<Option<f64>>,
     /// 各行的词元 span 布局(随字号重建)
     word_spans: Vec<Vec<crate::words::WordSpan>>,
+    /// [wrap] 翻译/音译子行断行后的行文本(每行一个元素;上游子行是
+    /// 普通块,CSS 自然换行即贪婪断行)
+    sub_translation_rows: Vec<Vec<String>>,
+    sub_roman_rows: Vec<Vec<String>>,
     /// 入场(2H 滑入)是否完成
     entered: bool,
     /// 强制重排版(首帧/尺寸变化/播放状态翻转)
@@ -385,6 +389,8 @@ impl LyricPage {
             hover_bg: (0..count).map(|_| AlphaTween::new(0.0)).collect(),
             mask_frozen: vec![None; count],
             word_spans: (0..count).map(|_| Vec::new()).collect(),
+            sub_translation_rows: (0..count).map(|_| Vec::new()).collect(),
+            sub_roman_rows: (0..count).map(|_| Vec::new()).collect(),
             entered: false,
             layout_dirty: true,
             current_stiffness: 0.0,
@@ -763,16 +769,30 @@ impl LyricPage {
         self.container_height > 0.0 && y < self.container_height && y + height > 0.0
     }
 
-    /// 单行总高:基础 2.0em + 每条翻译/音译子行 0.75em
-    /// (上游经 ResizeObserver 量整行 DOM,子行静态常驻、随行高入排版)
+    /// 单行总高:基础 2.0em + 主行断行每多一行 +1.2em + 翻译/音译子行
+    /// 每行 +0.75em(上游经 ResizeObserver 量整行 DOM;子行/断行随
+    /// 排版自然计入)
     fn row_height(&self, index: usize) -> f64 {
-        let subs = self
-            .timeline
-            .lines()
+        let wrap_rows = self
+            .word_spans
             .get(index)
-            .map(|l| l.sub_line_count())
-            .unwrap_or(0.0);
-        self.font_size * (LINE_TOTAL_EM + SUB_LINE_HEIGHT_EM * subs)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.iter().map(|sp| sp.row).max().unwrap_or(0) as f64 + 1.0)
+            .unwrap_or(1.0);
+        let sub_rows = self
+            .sub_translation_rows
+            .get(index)
+            .map(|v| v.len())
+            .unwrap_or(0)
+            + self
+                .sub_roman_rows
+                .get(index)
+                .map(|v| v.len())
+                .unwrap_or(0);
+        self.font_size
+            * (LINE_TOTAL_EM
+                + LINE_HEIGHT_EM * (wrap_rows - 1.0)
+                + SUB_LINE_HEIGHT_EM * sub_rows as f64)
     }
 
     fn animating(&self, now: Instant) -> bool {
@@ -881,34 +901,92 @@ impl Render for LyricPage {
         self.container_width = width;
         self.container_height = height;
         let font_size = (height * 0.05).max(width * 0.025).max(14.0);
-        if (font_size - self.font_size).abs() > 0.01 {
+        let font_changed = (font_size - self.font_size).abs() > 0.01;
+        // [wrap] 断行依赖可用宽度:字号或容器尺寸变化都要重排 span
+        // 与子行(上游 ResizeObserver → LineBalancer 重算)
+        if font_changed || size_changed {
             self.font_size = font_size;
-            let count = self.timeline.lines().len();
-            for index in 0..count {
-                self.calculator
-                    .set_line_height(index, self.row_height(index));
-            }
-            // 词元 span 布局:CJK 逐字/拉丁成组/空格零时长,逐 span 测宽排位
+            let text_width_avail = (width - font_size * TEXT_INSET_X_EM * 2.0).max(0.0);
+            let sub_font = (font_size * SUB_FONT_EM).max(SUB_MIN_FONT_PX);
+            // 词元 span 布局:CJK 逐字/拉丁成组/空格零时长,逐 span 测宽,
+            // 超宽时经 LineBalancer(上游 lyric-line-break 的 DP 移植)
+            // 均衡断行并重排各行内 x
             let font = lyric_font();
+            let measure = |text: &str, size: f64| -> f64 {
+                let shared: SharedString = text.into();
+                let runs = [gpui::TextRun {
+                    len: shared.len(),
+                    font: font.clone(),
+                    color: Hsla::default(),
+                    ..Default::default()
+                }];
+                let shaped = window
+                    .text_system()
+                    .shape_line(shared, px(size as f32), &runs, None);
+                (shaped.width() / px(1.0)) as f64
+            };
             for (index, line) in self.timeline.lines().iter().enumerate() {
                 let mut spans = crate::words::build_spans(&line.words);
-                let mut x = 0.0;
                 for span in &mut spans {
-                    let shared: SharedString = span.text.clone().into();
-                    let runs = [gpui::TextRun {
-                        len: shared.len(),
-                        font: font.clone(),
-                        color: Hsla::default(),
-                        ..Default::default()
-                    }];
-                    let shaped = window
-                        .text_system()
-                        .shape_line(shared, px(font_size as f32), &runs, None);
-                    span.width = (shaped.width() / px(1.0)) as f64;
+                    span.width = measure(&span.text, font_size);
+                }
+                // [wrap] 均衡断行:断点后 span.row+1、行内 x 重排
+                let children: Vec<crate::line_break::WrapChild> = spans
+                    .iter()
+                    .map(|s| crate::line_break::WrapChild {
+                        width: s.width,
+                        text: s.text.clone(),
+                        is_space: s.text.trim().is_empty(),
+                    })
+                    .collect();
+                let breaks =
+                    crate::line_break::calc_balanced_breaks(&children, text_width_avail);
+                let mut x = 0.0;
+                let mut row: u32 = 0;
+                let mut next_break = 0usize;
+                for (span_index, span) in spans.iter_mut().enumerate() {
+                    if next_break < breaks.len() && breaks[next_break] == span_index {
+                        row += 1;
+                        x = 0.0;
+                        next_break += 1;
+                    }
+                    span.row = row;
                     span.x = x;
                     x += span.width;
                 }
                 self.word_spans[index] = spans;
+
+                // [wrap] 翻译/音译子行:贪婪断行(上游子行为普通块,
+                // CSS 自然换行即贪婪),逐行存文本
+                let wrap_sub = |text: &Option<String>| -> Vec<String> {
+                    let Some(text) = text else { return Vec::new() };
+                    let mut children = crate::line_break::chunk_text(text);
+                    for child in &mut children {
+                        child.width = measure(&child.text, sub_font);
+                    }
+                    let breaks =
+                        crate::line_break::greedy_breaks(&children, text_width_avail);
+                    let mut rows = vec![String::new()];
+                    let mut next_break = 0usize;
+                    for (child_index, child) in children.iter().enumerate() {
+                        if next_break < breaks.len() && breaks[next_break] == child_index {
+                            rows.push(String::new());
+                            next_break += 1;
+                        }
+                        rows.last_mut().expect("非空").push_str(&child.text);
+                    }
+                    // 空白子行(全空白)不占行;纯空白行丢弃
+                    rows.retain(|r| !r.trim().is_empty());
+                    rows
+                };
+                self.sub_translation_rows[index] = wrap_sub(&line.translation);
+                self.sub_roman_rows[index] = wrap_sub(&line.romanization);
+            }
+            // 行高:排高依赖 span 断行与子行行数,须在 span 构建后设置
+            let count = self.timeline.lines().len();
+            for index in 0..count {
+                self.calculator
+                    .set_line_height(index, self.row_height(index));
             }
             self.layout_dirty = true;
         }
@@ -1240,19 +1318,28 @@ impl Render for LyricPage {
                 );
             }
 
-            // 静态文字层:位置恒为 (内缩 1em, 上留白 0.4em)
+            // [wrap] 主行视觉行数(断行后 0..n)
+            let main_rows = self.word_spans[index]
+                .iter()
+                .map(|s| s.row)
+                .max()
+                .map(|r| r as usize + 1)
+                .unwrap_or(1);
+
+            // 静态文字层:位置恒为 (内缩 1em, 上留白 0.4em);高度按
+            // 断行行数撑开(上游 DOM 的 fit-content 自然多行)
             let text_element = div()
                 .absolute()
                 .left(px(inset_x as f32))
                 .top(px(pad_y as f32))
                 .w(px(text_width as f32))
-                .h(px(line_box as f32))
+                .h(px((line_box * main_rows as f64) as f32))
                 .child(word_element);
 
             // 行内容列:主行 + 翻译/音译子行(上游 .lyricLine 的三个
             // 子块,共享行级 filter/transform/opacity;子行静态常驻,
             // .lyricSubLine:0.5em 字号(min 10px)、1.5em 行高、0.3
-            // 透明度,无展开动画)
+            // 透明度,无展开动画)。子行超宽贪婪断行,逐行一个 div
             let sub_font = (font * SUB_FONT_EM).max(SUB_MIN_FONT_PX);
             let sub_h = font * SUB_LINE_HEIGHT_EM;
             let mut content = div()
@@ -1262,25 +1349,27 @@ impl Render for LyricPage {
                 .w(px(self.container_width as f32))
                 .h(px(line_total as f32))
                 .child(text_element);
-            let mut sub_y = pad_y + line_box;
-            for sub_text in [&line.translation, &line.romanization].into_iter().flatten() {
-                content = content.child(
-                    div()
-                        .absolute()
-                        .left(px(inset_x as f32))
-                        .top(px(sub_y as f32))
-                        .w(px(text_width as f32))
-                        .h(px(sub_h as f32))
-                        .font_family(lyric_font().family)
-                        // 上游子行继承根样式字重(react-full 默认 600);
-                        // 此前漏设走 div 默认 400,细字重还会放大模糊伪影
-                        .font_weight(lyric_font().weight)
-                        .text_size(px(sub_font as f32))
-                        .line_height(px(sub_h as f32))
-                        .text_color(gpui::hsla(0.0, 0.0, 1.0, SUB_OPACITY))
-                        .child(sub_text.clone()),
-                );
-                sub_y += sub_h;
+            let mut sub_y = pad_y + line_box * main_rows as f64;
+            for sub_rows in [&self.sub_translation_rows[index], &self.sub_roman_rows[index]] {
+                for sub_text in sub_rows {
+                    content = content.child(
+                        div()
+                            .absolute()
+                            .left(px(inset_x as f32))
+                            .top(px(sub_y as f32))
+                            .w(px(text_width as f32))
+                            .h(px(sub_h as f32))
+                            .font_family(lyric_font().family)
+                            // 上游子行继承根样式字重(react-full 默认 600);
+                            // 此前漏设走 div 默认 400,细字重还会放大模糊伪影
+                            .font_weight(lyric_font().weight)
+                            .text_size(px(sub_font as f32))
+                            .line_height(px(sub_h as f32))
+                            .text_color(gpui::hsla(0.0, 0.0, 1.0, SUB_OPACITY))
+                            .child(sub_text.clone()),
+                    );
+                    sub_y += sub_h;
+                }
             }
             children.push(
                 div()
@@ -1296,7 +1385,11 @@ impl Render for LyricPage {
                             content,
                             scale as f32,
                             gpui::point(px(0.0), px(y as f32)),
-                            gpui::point(px(0.0), px((line_box / 2.0) as f32)),
+                            // [wrap] 缩放枢轴随主行多行高度居中
+                            gpui::point(
+                                px(0.0),
+                                px((line_box * main_rows as f64 / 2.0) as f32),
+                            ),
                         ),
                         self.blur_px[index].sample(now),
                     ))

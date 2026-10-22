@@ -98,6 +98,9 @@ pub struct WordSpan {
     /// 行内内容左缘偏移(逻辑像素,布局时测得)
     pub x: f64,
     pub width: f64,
+    /// [wrap] 视觉行号(长行经 LineBalancer 断行后 0..n;单行恒 0,
+    /// x 为该视觉行内的左缘偏移)
+    pub row: u32,
     /// [emphasize] 该字符的辉光参数(非 emphasize 词为 None)
     pub emp: Option<Emphasize>,
 }
@@ -123,7 +126,7 @@ pub enum FloatPhase {
     Sunk,
 }
 
-fn is_cjk_char(ch: char) -> bool {
+pub(crate) fn is_cjk_char(ch: char) -> bool {
     // 上游 /^[\p{Unified_Ideograph}\u0800-\u9FFC]+$/ 的实用近似
     matches!(ch as u32, 0x0800..=0x9ffc)
 }
@@ -262,6 +265,7 @@ pub fn group_spans(atoms: &[WordAtom], line_start_ms: f64) -> Vec<WordSpan> {
                         char_count,
                         is_last_word: emp_word.is_last_word,
                     }),
+                    row: 0,
                 });
             }
             group.clear();
@@ -275,6 +279,7 @@ pub fn group_spans(atoms: &[WordAtom], line_start_ms: f64) -> Vec<WordSpan> {
             x: 0.0,
             width: 0.0,
             emp: None,
+            row: 0,
         });
         group.clear();
     };
@@ -289,6 +294,7 @@ pub fn group_spans(atoms: &[WordAtom], line_start_ms: f64) -> Vec<WordSpan> {
                 x: 0.0,
                 width: 0.0,
                 emp: None,
+                row: 0,
             });
         } else if is_cjk_text(atom.text.as_str()) {
             flush_group(&mut group, &mut spans);
@@ -321,6 +327,7 @@ pub fn group_spans(atoms: &[WordAtom], line_start_ms: f64) -> Vec<WordSpan> {
                 x: 0.0,
                 width: 0.0,
                 emp: span_emp,
+                row: 0,
             });
         } else {
             group.push(atom);
@@ -597,6 +604,8 @@ impl Element for WordLineElement {
 
         for (index, span) in self.spans.iter().enumerate() {
             let span_x = origin_x + span.x;
+            // [wrap] 长行断行后的视觉行偏移(x 为该视觉行内偏移)
+            let span_y = origin_y + span.row as f64 * self.line_height;
             // 逐词上浮(上游 createFloatAnimation,ease-out 关键帧;
             // 退激活按墙钟反演回落)。经绘制期矩阵平移(顶点着色器
             // 精度)而非平移原点——字形原点按整像素吸附,直接平移会让
@@ -635,7 +644,7 @@ impl Element for WordLineElement {
             // 矩阵:绕字符中心缩放 + 平移(设备像素空间,与 ScaledElement
             // 同一约定:RS·p + [C(1−s) + T])
             let center_x = (span_x + span.width / 2.0) * scale_factor as f64;
-            let center_y = (origin_y + self.line_height / 2.0) * scale_factor as f64;
+            let center_y = (span_y + self.line_height / 2.0) * scale_factor as f64;
             let s = glyph_scale as f32;
             let matrix = gpui::TransformationMatrix {
                 rotation_scale: [[s, 0.0], [0.0, s]],
@@ -682,7 +691,7 @@ impl Element for WordLineElement {
                                 glow_alpha,
                                 glow_alpha * 0.4,
                                 |window| {
-                                    self.paint_span(window, cx, span_x, origin_y, span, 1.0);
+                                    self.paint_span(window, cx, span_x, span_y, span, 1.0);
                                 },
                             );
                         });
@@ -695,13 +704,13 @@ impl Element for WordLineElement {
                     self.dark as f32,
                     |window| {
                         window.with_element_transformation(matrix, |window| {
-                            self.paint_span(window, cx, span_x, origin_y, span, 1.0);
+                            self.paint_span(window, cx, span_x, span_y, span, 1.0);
                         });
                     },
                 );
             } else {
                 window.with_element_transformation(matrix, |window| {
-                    self.paint_span(window, cx, span_x, origin_y, span, self.dark);
+                    self.paint_span(window, cx, span_x, span_y, span, self.dark);
                 });
             }
         }
@@ -728,6 +737,7 @@ mod tests {
             x,
             width,
             emp: None,
+            row: 0,
         }
     }
 
