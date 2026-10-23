@@ -30,6 +30,9 @@ pub struct LyricLine {
     /// [BG] 背景人声文本(解析器 background_vocal,行内 x-bg span;
     /// 上游挂 bgWrapper 于主行下方,激活时滑入占位、退激活滑出)
     pub bg_vocal: Option<String>,
+    /// [roman] 逐词音译音节(解析器 romanizations 首条的 words;
+    /// 经 IoU 对齐挂到主行各词下方,上游 alignRomanization)
+    pub roman_words: Option<Vec<LyricWord>>,
 }
 
 #[derive(Debug, Clone)]
@@ -39,6 +42,8 @@ pub struct LyricWord {
     #[allow(dead_code)] // M4 逐词渐变揭示将消费
     pub end_time_ms: f64,
     pub text: String,
+    /// [ruby] 注音文本(解析器 RubyTag 拼接;词上方 0.5em 小字)
+    pub ruby: Option<String>,
 }
 
 impl LyricLine {
@@ -573,10 +578,12 @@ mod tests {
                 start_time_ms: start,
                 end_time_ms: end,
                 text: text.into(),
+                ruby: None,
             }],
             translation: None,
             romanization: None,
             bg_vocal: None,
+            roman_words: None,
         }
     }
 
@@ -719,10 +726,12 @@ mod tests {
                     start_time_ms: 9000.0,
                     end_time_ms: 9000.0 + 4200.0 - 520.0,
                     text: "首行".into(),
+                    ruby: None,
                 }],
                 translation: None,
                 romanization: None,
                 bg_vocal: None,
+                roman_words: None,
             },
             LyricLine {
                 start_time_ms: 14200.0,
@@ -731,10 +740,12 @@ mod tests {
                     start_time_ms: 14200.0,
                     end_time_ms: 14200.0 + 3400.0 - 520.0,
                     text: "次行".into(),
+                    ruby: None,
                 }],
                 translation: None,
                 romanization: None,
                 bg_vocal: None,
+                roman_words: None,
             },
         ];
         optimize_lines(&mut lines);
@@ -757,10 +768,12 @@ mod tests {
                     start_time_ms: 0.0,
                     end_time_ms: 14000.0,
                     text: "A".into(),
+                    ruby: None,
                 }],
                 translation: None,
                 romanization: None,
                 bg_vocal: None,
+                roman_words: None,
             },
             LyricLine {
                 start_time_ms: 13600.0,
@@ -769,10 +782,12 @@ mod tests {
                     start_time_ms: 13600.0,
                     end_time_ms: 16000.0,
                     text: "B".into(),
+                    ruby: None,
                 }],
                 translation: None,
                 romanization: None,
                 bg_vocal: None,
+                roman_words: None,
             },
         ];
         optimize_lines(&mut lines);
@@ -792,10 +807,12 @@ mod tests {
                     start_time_ms: 0.0,
                     end_time_ms: 15100.0,
                     text: "A".into(),
+                    ruby: None,
                 }],
                 translation: None,
                 romanization: None,
                 bg_vocal: None,
+                roman_words: None,
             },
             LyricLine {
                 start_time_ms: 15000.0,
@@ -804,10 +821,12 @@ mod tests {
                     start_time_ms: 15000.0,
                     end_time_ms: 16000.0,
                     text: "B".into(),
+                    ruby: None,
                 }],
                 translation: None,
                 romanization: None,
                 bg_vocal: None,
+                roman_words: None,
             },
         ];
         optimize_lines(&mut lines);
@@ -831,10 +850,12 @@ mod interlude_boundary {
                 start_time_ms: 9000.0,
                 end_time_ms: 13200.0,
                 text: "前".into(),
+                ruby: None,
             }],
             translation: None,
             romanization: None,
             bg_vocal: None,
+            roman_words: None,
         }];
         let mut t = Timeline::new(lines);
         assert_eq!(t.lines[0].start_time_ms, 8400.0, "首行按上游提前 600ms");

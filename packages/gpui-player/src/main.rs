@@ -69,6 +69,13 @@ fn map_lyric_lines(parsed: &[ttml_processor::model::LyricLine]) -> Vec<LyricLine
                                     ""
                                 }
                             ),
+                            // [ruby] 注音(RubyTag 拼接)
+                            ruby: word.ruby.as_ref().map(|tags| {
+                                tags.iter()
+                                    .map(|t| t.text.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join("")
+                            }),
                         })
                         .collect()
                 })
@@ -77,6 +84,7 @@ fn map_lyric_lines(parsed: &[ttml_processor::model::LyricLine]) -> Vec<LyricLine
                         start_time_ms: line.start_time as f64,
                         end_time_ms: line.end_time as f64,
                         text: line.text.clone(),
+                        ruby: None,
                     }]
                 }),
             translation: line
@@ -91,6 +99,25 @@ fn map_lyric_lines(parsed: &[ttml_processor::model::LyricLine]) -> Vec<LyricLine
                 .and_then(|r| r.first())
                 .map(|r| r.text.clone())
                 .filter(|t| !t.trim().is_empty()),
+            // [roman] 逐词音译音节(首条 romanizations 的 words;
+            // 行级文本之外还有逐词数据时,按 IoU 对齐挂词)
+            roman_words: line
+                .romanizations
+                .as_ref()
+                .and_then(|r| r.first())
+                .and_then(|r| r.words.as_ref())
+                .filter(|words| !words.is_empty())
+                .map(|words| {
+                    words
+                        .iter()
+                        .map(|w| LyricWord {
+                            start_time_ms: w.start_time as f64,
+                            end_time_ms: w.end_time as f64,
+                            text: w.text.clone(),
+                            ruby: None,
+                        })
+                        .collect()
+                }),
             // [BG] 背景人声(解析器 background_vocal,行内 x-bg span)
             bg_vocal: line
                 .background_vocal

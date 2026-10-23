@@ -53,6 +53,8 @@ pub struct WordAtom {
     pub end_ms: f64,
     /// [emphasize] 所属原始词的信息(词达标时所有 atom 共享同一份)
     pub emp_word: Option<EmphasizeWord>,
+    /// [roman/ruby] 所属原始词索引(span 侧供词组定位)
+    pub word_index: usize,
 }
 
 /// [emphasize] 原始词的元信息(上游 chunk/word 级)
@@ -101,6 +103,18 @@ pub struct WordSpan {
     /// [wrap] 视觉行号(长行经 LineBalancer 断行后 0..n;单行恒 0,
     /// x 为该视觉行内的左缘偏移)
     pub row: u32,
+    /// [roman/ruby] 所属原始词索引(carrier span 记 group_last)
+    pub word_index: usize,
+    /// [roman] 词首 span 携带的逐词音译(词下方 0.5em 小字)
+    pub roman: Option<String>,
+    /// [ruby] 词首 span 携带的注音(词上方 0.5em 小字,居中)
+    pub ruby: Option<String>,
+    /// [roman/ruby] 词组末 span 索引(宽度求和用;仅 carrier 有效)
+    pub group_last: usize,
+    /// [roman/ruby] 小字文本实测宽(carrier 有效;roman 左对齐、
+    /// ruby 居中需组宽)
+    pub roman_width: f64,
+    pub ruby_width: f64,
     /// [emphasize] 该字符的辉光参数(非 emphasize 词为 None)
     pub emp: Option<Emphasize>,
 }
@@ -196,6 +210,7 @@ pub fn atomize(words: &[LyricWord]) -> Vec<WordAtom> {
                     start_ms: at,
                     end_ms: at,
                     emp_word,
+                    word_index,
                 });
                 continue;
             }
@@ -208,6 +223,7 @@ pub fn atomize(words: &[LyricWord]) -> Vec<WordAtom> {
                         start_ms: start,
                         end_ms: start + unit,
                         emp_word,
+                        word_index,
                     });
                     offset += 1.0;
                 }
@@ -218,6 +234,7 @@ pub fn atomize(words: &[LyricWord]) -> Vec<WordAtom> {
                     start_ms: start,
                     end_ms: start + part_len * unit,
                     emp_word,
+                    word_index,
                 });
                 offset += part_len;
             }
@@ -238,6 +255,13 @@ pub fn group_spans(atoms: &[WordAtom], line_start_ms: f64) -> Vec<WordSpan> {
         // [emphasize] 上游按 chunk(合并后的词)整体演出:任一子词达标
         // 则整组逐字符拆分(拉丁字符也是 characterElements),按组时长
         // 均分时间(揭示光标在组内仍匀速扫过)
+        // 组词索引:组内 atom 全属同一原始词才有效(跨词合并组不挂
+        // roman/ruby,上游 chunk 合并语义下词级标注无从归属)
+        let group_word = if group.iter().all(|a| a.word_index == group[0].word_index) {
+            group[0].word_index
+        } else {
+            usize::MAX
+        };
         if let Some(emp_word) = group.iter().find_map(|atom| atom.emp_word) {
             let text = group.iter().map(|atom| atom.text.as_str()).collect::<String>();
             let trimmed: String = text.trim().chars().collect();
@@ -266,6 +290,12 @@ pub fn group_spans(atoms: &[WordAtom], line_start_ms: f64) -> Vec<WordSpan> {
                         is_last_word: emp_word.is_last_word,
                     }),
                     row: 0,
+                    word_index: group_word,
+                    roman: None,
+                    ruby: None,
+                    group_last: 0,
+                    roman_width: 0.0,
+                    ruby_width: 0.0,
                 });
             }
             group.clear();
@@ -280,6 +310,12 @@ pub fn group_spans(atoms: &[WordAtom], line_start_ms: f64) -> Vec<WordSpan> {
             width: 0.0,
             emp: None,
             row: 0,
+            word_index: group_word,
+            roman: None,
+            ruby: None,
+            group_last: 0,
+            roman_width: 0.0,
+            ruby_width: 0.0,
         });
         group.clear();
     };
@@ -295,6 +331,12 @@ pub fn group_spans(atoms: &[WordAtom], line_start_ms: f64) -> Vec<WordSpan> {
                 width: 0.0,
                 emp: None,
                 row: 0,
+                word_index: atom.word_index,
+                roman: None,
+                ruby: None,
+                group_last: 0,
+                roman_width: 0.0,
+                ruby_width: 0.0,
             });
         } else if is_cjk_text(atom.text.as_str()) {
             flush_group(&mut group, &mut spans);
@@ -328,6 +370,12 @@ pub fn group_spans(atoms: &[WordAtom], line_start_ms: f64) -> Vec<WordSpan> {
                 width: 0.0,
                 emp: span_emp,
                 row: 0,
+                word_index: atom.word_index,
+                roman: None,
+                ruby: None,
+                group_last: 0,
+                roman_width: 0.0,
+                ruby_width: 0.0,
             });
         } else {
             group.push(atom);
@@ -390,10 +438,91 @@ pub fn emphasize_float_progress(emp: &Emphasize, relative_ms: f64) -> f64 {
 
 /// [emphasize] 整行 span 构建(上游 buildWord + createEmphasizeAnimation 的
 /// 数据准备):atomize → group_spans(含 emphasize 逐字符拆分)
-pub fn build_spans(words: &[LyricWord]) -> Vec<WordSpan> {
+pub fn build_spans(words: &[LyricWord], roman: Option<&[LyricWord]>) -> Vec<WordSpan> {
     let atoms = atomize(words);
     let line_start = words.first().map(|w| w.start_time_ms).unwrap_or(0.0);
-    group_spans(&atoms, line_start)
+    let mut spans = group_spans(&atoms, line_start);
+    attach_roman_ruby(&mut spans, words, roman);
+    spans
+}
+
+/// [roman] 逐词音译对齐(上游 alignRomanization 逐式移植):
+/// 快速通道——主/音译音节起始差 ≤2ms 直接匹配;否则取时间交并比
+/// IoU 最大者,≥0.1 才挂;游标单调推进不回看
+pub fn align_romanization(
+    main: &[LyricWord],
+    roman: &[LyricWord],
+) -> Vec<Option<String>> {
+    const MIN_IOU: f64 = 0.1;
+    const FAST_TRACK_MS: f64 = 2.0;
+    let mut result = vec![None; main.len()];
+    let mut search_start = 0usize;
+    for (i, word) in main.iter().enumerate() {
+        let main_end = word.end_time_ms;
+        let mut max_iou = 0.0;
+        let mut best = None;
+        let mut j = search_start;
+        while j < roman.len() {
+            let sub = &roman[j];
+            if (word.start_time_ms - sub.start_time_ms).abs() <= FAST_TRACK_MS {
+                result[i] = Some(sub.text.clone());
+                search_start = j + 1;
+                best = None; // 快速通道命中,退出
+                break;
+            }
+            let overlap_start = word.start_time_ms.max(sub.start_time_ms);
+            let intersection =
+                (main_end.min(sub.end_time_ms) - overlap_start).max(0.0);
+            if intersection > 0.0 {
+                let union_start = word.start_time_ms.min(sub.start_time_ms);
+                let union = (main_end.max(sub.end_time_ms) - union_start).max(1.0);
+                let iou = intersection / union;
+                if iou > max_iou {
+                    max_iou = iou;
+                    best = Some(j);
+                }
+            }
+            if sub.start_time_ms >= main_end {
+                break;
+            }
+            j += 1;
+        }
+        if let Some(j) = best
+            && max_iou >= MIN_IOU
+        {
+            result[i] = Some(roman[j].text.clone());
+            search_start = j + 1;
+        }
+    }
+    result
+}
+
+/// 把对齐后的音译与词内 ruby 挂到词组首 span(group_last 记组尾)
+fn attach_roman_ruby(spans: &mut [WordSpan], words: &[LyricWord], roman: Option<&[LyricWord]>) {
+    let roman_aligned: Vec<Option<String>> = match roman {
+        Some(roman) => align_romanization(words, roman),
+        None => vec![None; words.len()],
+    };
+    for (word_index, word) in words.iter().enumerate() {
+        let roman_text = roman_aligned.get(word_index).cloned().flatten();
+        let ruby_text = word.ruby.clone();
+        if roman_text.is_none() && ruby_text.is_none() {
+            continue;
+        }
+        // 词组 span 区间:所有 word_index 相同的连续 span
+        let range: Vec<usize> = spans
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.word_index == word_index)
+            .map(|(i, _)| i)
+            .collect();
+        let (Some(&first), Some(&last)) = (range.first(), range.last()) else {
+            continue;
+        };
+        spans[first].roman = roman_text;
+        spans[first].ruby = ruby_text;
+        spans[first].group_last = last;
+    }
 }
 
 /// 共享光标:media 时刻第 index 个 span 的遮罩边缘位置
@@ -509,6 +638,82 @@ impl WordLineElement {
         }
     }
 
+    /// [roman/ruby] 词级小字绘制(carrier span):音译在词组下方
+    /// 左对齐(上游 .romanWord:0.5em、行高 1em、padding-inline-end
+    /// 0.3em),注音在词组上方居中(.rubyWord:0.5em、min-height 1em、
+    /// justify-content center)。随 carrier 的遮罩带同步揭示;不带
+    /// 逐词 float/emphasize 矩阵(上游二者是词内字符级动画,小字随
+    /// 词元素整体存在)
+    #[allow(clippy::too_many_arguments)]
+    fn paint_roman_ruby(
+        &self,
+        window: &mut Window,
+        cx: &mut App,
+        span: &WordSpan,
+        carrier_index: usize,
+        span_x: f64,
+        text_top: f64,
+        ruby_grow: f64,
+        alpha: f64,
+    ) {
+        let small = self.font_size * 0.5;
+        let line_h = self.font_size * 1.2;
+        let shape_small = |text: &str, window: &mut Window| {
+            window.text_system().shape_line(
+                text.to_string().into(),
+                px(small as f32),
+                &[TextRun {
+                    len: text.len(),
+                    font: self.font.clone(),
+                    color: Hsla {
+                        h: 0.0,
+                        s: 0.0,
+                        l: 1.0,
+                        a: alpha as f32,
+                    },
+                    ..Default::default()
+                }],
+                None,
+            )
+        };
+        if let Some(roman) = &span.roman
+            && !roman.is_empty()
+        {
+            let shaped = shape_small(roman, window);
+            shaped
+                .paint(
+                    point(px(span_x as f32), px((text_top + ruby_grow + line_h) as f32)),
+                    px(small as f32),
+                    TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                )
+                .ok();
+        }
+        if let Some(ruby) = &span.ruby
+            && !ruby.is_empty()
+            && span.ruby_width > 0.0
+        {
+            // 词组宽 = carrier 至 group_last 的宽和(居中用)
+            let end = span.group_last.min(self.spans.len() - 1);
+            let group_width: f64 =
+                self.spans[carrier_index..=end].iter().map(|s| s.width).sum();
+            let center_x = span_x + group_width / 2.0 - span.ruby_width / 2.0;
+            let shaped = shape_small(ruby, window);
+            shaped
+                .paint(
+                    point(px(center_x as f32), px(text_top as f32)),
+                    px(small as f32),
+                    TextAlign::Left,
+                    None,
+                    window,
+                    cx,
+                )
+                .ok();
+        }
+    }
+
     fn paint_span(
         &self,
         window: &mut Window,
@@ -601,11 +806,20 @@ impl Element for WordLineElement {
         let solid = (self.bright - self.dark).abs() < 1e-4;
         let mask_media = self.frozen_media_ms.unwrap_or(self.media_ms);
         let scale_factor = window.scale_factor();
+        // [ruby] 行含注音时文本整体下移 0.5em(上游词列 ruby 在上、
+        // 基文本在下,行盒向上生长;均匀间距近似)
+        let ruby_grow = if self.spans.iter().any(|s| s.ruby.is_some()) {
+            self.font_size * 0.5
+        } else {
+            0.0
+        };
 
         for (index, span) in self.spans.iter().enumerate() {
             let span_x = origin_x + span.x;
-            // [wrap] 长行断行后的视觉行偏移(x 为该视觉行内偏移)
-            let span_y = origin_y + span.row as f64 * self.line_height;
+            // [wrap] 长行断行后的视觉行偏移(x 为该视觉行内偏移);
+            // 文本顶 = 行距原点 + ruby 生长量
+            let row_origin_y = origin_y + span.row as f64 * self.line_height;
+            let span_y = row_origin_y + ruby_grow;
             // 逐词上浮(上游 createFloatAnimation,ease-out 关键帧;
             // 退激活按墙钟反演回落)。经绘制期矩阵平移(顶点着色器
             // 精度)而非平移原点——字形原点按整像素吸附,直接平移会让
@@ -706,12 +920,24 @@ impl Element for WordLineElement {
                         window.with_element_transformation(matrix, |window| {
                             self.paint_span(window, cx, span_x, span_y, span, 1.0);
                         });
+                        if span.roman.is_some() || span.ruby.is_some() {
+                            self.paint_roman_ruby(
+                                window, cx, span, index, span_x, span_y,
+                                ruby_grow, self.bright,
+                            );
+                        }
                     },
                 );
             } else {
                 window.with_element_transformation(matrix, |window| {
                     self.paint_span(window, cx, span_x, span_y, span, self.dark);
                 });
+                if span.roman.is_some() || span.ruby.is_some() {
+                    self.paint_roman_ruby(
+                        window, cx, span, index, span_x, span_y,
+                        ruby_grow, self.dark,
+                    );
+                }
             }
         }
     }
@@ -729,6 +955,61 @@ impl IntoElement for WordLineElement {
 mod tests {
     use super::*;
 
+    /// [roman] 快速通道:起始差 ≤2ms 直接配对
+    #[test]
+    fn roman_alignment_fast_track_and_iou() {
+        use crate::timeline::LyricWord;
+        let word = |s: f64, e: f64| LyricWord {
+            start_time_ms: s,
+            end_time_ms: e,
+            text: String::new(),
+            ruby: None,
+        };
+        let main = vec![word(100.0, 500.0), word(600.0, 1000.0)];
+        // 音译 1 与词 0 差 1.5ms(快速通道);音译 2 与词 1 重叠 50%
+        let roman = vec![word(101.5, 480.0), word(650.0, 1100.0)];
+        let aligned = align_romanization(&main, &roman);
+        assert_eq!(aligned[0].as_deref(), Some(""));
+        assert_eq!(aligned[1].as_deref(), Some(""));
+        // 纯 IoU:无快速通道命中,取最大交并比
+        let roman2 = vec![word(200.0, 700.0)];
+        let aligned2 = align_romanization(&main, &roman2);
+        // 词 0 [100,500] 与 [200,700]:交 300/并 600 = 0.5 ≥ 0.1
+        assert_eq!(aligned2[0].as_deref(), Some(""));
+        assert_eq!(aligned2[1], None);
+        // IoU 过低不挂:交 0
+        let roman3 = vec![word(1200.0, 1500.0)];
+        let aligned3 = align_romanization(&main, &roman3);
+        assert_eq!(aligned3[0], None);
+    }
+
+    /// [roman/ruby] 夹具:sidecar 逐词音译按快速通道配对,ruby 从
+    /// 容器标注进词;carrier 与 group_last 正确落位
+    #[test]
+    fn roman_ruby_fixture_maps_and_aligns() {
+        let ttml = std::fs::read_to_string("testdata/roman-ruby.ttml").unwrap();
+        let parsed = ttml_processor::parse_ttml(&ttml).unwrap();
+        let lines = crate::map_lyric_lines(&parsed.lines);
+        assert_eq!(lines.len(), 1);
+        let line = &lines[0];
+        // ruby 进词
+        assert_eq!(line.words[0].ruby.as_deref(), Some("nǐ"));
+        assert_eq!(line.words[3].ruby.as_deref(), Some("jiè"));
+        // 逐词音译音节映射
+        let roman = line.roman_words.as_ref().expect("应有逐词音译");
+        assert_eq!(roman.len(), 4);
+        assert_eq!(roman[0].text, "nǐ");
+        // build_spans:CJK 单字各成 span,词级小字挂 carrier
+        let spans = build_spans(&line.words, line.roman_words.as_deref());
+        assert_eq!(spans.len(), 4, "四字各一 span");
+        assert_eq!(spans[0].text, "你");
+        assert_eq!(spans[0].roman.as_deref(), Some("nǐ"));
+        assert_eq!(spans[0].ruby.as_deref(), Some("nǐ"));
+        assert_eq!(spans[0].group_last, 0);
+        assert_eq!(spans[2].roman.as_deref(), Some("shì"));
+        assert_eq!(spans[2].word_index, 2);
+    }
+
     fn span(text: &str, start: f64, end: f64, x: f64, width: f64) -> WordSpan {
         WordSpan {
             text: text.into(),
@@ -738,6 +1019,12 @@ mod tests {
             width,
             emp: None,
             row: 0,
+            word_index: 0,
+            roman: None,
+            ruby: None,
+            group_last: 0,
+            roman_width: 0.0,
+            ruby_width: 0.0,
         }
     }
 
@@ -756,6 +1043,7 @@ mod tests {
             start_time_ms: 0.0,
             end_time_ms: 3000.0,
             text: "间奏 ".into(),
+            ruby: None,
         }];
         let atoms = atomize(&words);
         assert_eq!(atoms.len(), 3);
@@ -770,10 +1058,10 @@ mod tests {
     #[test]
     fn group_spans_splits_cjk_and_merges_latin() {
         let atoms = vec![
-            WordAtom { text: "Hello".into(), start_ms: 0.0, end_ms: 100.0, emp_word: None },
-            WordAtom { text: "AMLL".into(), start_ms: 100.0, end_ms: 200.0, emp_word: None },
-            WordAtom { text: " ".into(), start_ms: 200.0, end_ms: 200.0, emp_word: None },
-            WordAtom { text: "词".into(), start_ms: 200.0, end_ms: 300.0, emp_word: None },
+            WordAtom { text: "Hello".into(), start_ms: 0.0, end_ms: 100.0, emp_word: None, word_index: 0 },
+            WordAtom { text: "AMLL".into(), start_ms: 100.0, end_ms: 200.0, emp_word: None, word_index: 0 },
+            WordAtom { text: " ".into(), start_ms: 200.0, end_ms: 200.0, emp_word: None, word_index: 0 },
+            WordAtom { text: "词".into(), start_ms: 200.0, end_ms: 300.0, emp_word: None, word_index: 0 },
         ];
         let spans = group_spans(&atoms, 0.0);
         assert_eq!(spans.len(), 3);
@@ -853,6 +1141,7 @@ mod emphasize_tests {
             start_time_ms: start,
             end_time_ms: end,
             text: text.into(),
+            ruby: None,
         }
     }
 
@@ -923,7 +1212,7 @@ mod emphasize_tests {
     fn build_spans_splits_emphasized_cjk_word_per_char() {
         // "流浪" 2s ≥1s CJK → 两字符 span,共享词级参数
         let words = vec![word("流浪", 1000.0, 3000.0)];
-        let spans = build_spans(&words);
+        let spans = build_spans(&words, None);
         assert_eq!(spans.len(), 2);
         assert_eq!(spans[0].text, "流");
         assert_eq!(spans[1].text, "浪");
@@ -943,7 +1232,7 @@ mod emphasize_tests {
     fn build_spans_keeps_short_cjk_unemphasized() {
         // CJK 词 <1s 不触发
         let words = vec![word("流浪", 0.0, 800.0)];
-        let spans = build_spans(&words);
+        let spans = build_spans(&words, None);
         assert_eq!(spans.len(), 2);
         assert!(spans.iter().all(|span| span.emp.is_none()));
     }
@@ -952,14 +1241,14 @@ mod emphasize_tests {
     fn build_spans_emphasized_latin_splits_per_char() {
         // 拉丁词 ≥1s 且 2-7 字符 → 逐字符 span
         let words = vec![word("hello", 0.0, 1500.0)];
-        let spans = build_spans(&words);
+        let spans = build_spans(&words, None);
         assert_eq!(spans.len(), 5, "hello 逐字符拆分");
         let emp = spans[0].emp.expect("拉丁 emphasize 词必带参数");
         assert_eq!(emp.char_count, 5);
         assert_eq!(emp.char_index, 0);
         // 拉丁词 ≥8 字符不触发
         let words = vec![word("abcdefgh", 0.0, 1500.0)];
-        let spans = build_spans(&words);
+        let spans = build_spans(&words, None);
         assert_eq!(spans.len(), 1, "超长拉丁词不拆分");
         assert!(spans[0].emp.is_none());
     }

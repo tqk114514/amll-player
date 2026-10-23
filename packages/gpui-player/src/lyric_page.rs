@@ -843,8 +843,20 @@ impl LyricPage {
                 .get(index)
                 .map(|v| v.len())
                 .unwrap_or(0);
+        // [roman/ruby] 词级小字使主行行盒生长(上游词列结构;
+        // 均匀近似:每视觉行 +0.5em/有则)
+        let has_roman = self
+            .word_spans
+            .get(index)
+            .is_some_and(|s| s.iter().any(|sp| sp.roman.is_some()));
+        let has_ruby = self
+            .word_spans
+            .get(index)
+            .is_some_and(|s| s.iter().any(|sp| sp.ruby.is_some()));
+        let small_grow_em = (f64::from(has_roman) + f64::from(has_ruby)) * 0.5;
         let mut em = LINE_TOTAL_EM
             + LINE_HEIGHT_EM * (wrap_rows - 1.0)
+            + small_grow_em * wrap_rows
             + SUB_LINE_HEIGHT_EM * sub_rows as f64;
         let bg_rows = self.bg_rows.get(index).map(|v| v.len()).unwrap_or(0);
         if bg_rows > 0 && self.is_line_active(index) {
@@ -985,9 +997,24 @@ impl Render for LyricPage {
                 (shaped.width() / px(1.0)) as f64
             };
             for (index, line) in self.timeline.lines().iter().enumerate() {
-                let mut spans = crate::words::build_spans(&line.words);
+                let mut spans = crate::words::build_spans(
+                    &line.words,
+                    line.roman_words.as_deref(),
+                );
                 for span in &mut spans {
                     span.width = measure(&span.text, font_size);
+                    // [roman/ruby] carrier 小字实测宽(ruby 居中用)
+                    let small = font_size * 0.5;
+                    if let Some(roman) = &span.roman
+                        && !roman.is_empty()
+                    {
+                        span.roman_width = measure(roman, small);
+                    }
+                    if let Some(ruby) = &span.ruby
+                        && !ruby.is_empty()
+                    {
+                        span.ruby_width = measure(ruby, small);
+                    }
                 }
                 // [wrap] 均衡断行:断点后 span.row+1、行内 x 重排
                 let children: Vec<crate::line_break::WrapChild> = spans
@@ -1356,6 +1383,13 @@ impl Render for LyricPage {
                 _ => {}
             }
 
+            // [roman/ruby] 行级 pitch:词级小字生长(均匀近似),
+            // 与 row_height 的 small_grow_em 一致
+            let has_roman = self.word_spans[index].iter().any(|s| s.roman.is_some());
+            let has_ruby = self.word_spans[index].iter().any(|s| s.ruby.is_some());
+            let row_pitch =
+                line_box + font * 0.5 * (f64::from(has_roman) + f64::from(has_ruby));
+
             // 逐词揭示元素:亮暗 alpha 与行 opacity 都经补间传入——
             // 激活/退激活的亮度过渡、退激活的遮罩冻结与 float 阶段
             // 全部在此闭合(元素按 alpha 是否相异自选渐变/单色路径)
@@ -1363,7 +1397,7 @@ impl Render for LyricPage {
                 self.word_spans[index].clone(),
                 lyric_font(),
                 font,
-                line_box,
+                row_pitch,
                 self.alpha_bright[index].sample(now),
                 self.alpha_dark[index].sample(now),
                 self.position_ms,
@@ -1401,7 +1435,7 @@ impl Render for LyricPage {
                 .left(px(inset_x as f32))
                 .top(px(pad_y as f32))
                 .w(px(text_width as f32))
-                .h(px((line_box * main_rows as f64) as f32))
+                .h(px((row_pitch * main_rows as f64) as f32))
                 .child(word_element);
 
             // 行内容列:主行 + 翻译/音译子行(上游 .lyricLine 的三个
@@ -1417,7 +1451,7 @@ impl Render for LyricPage {
                 .w(px(self.container_width as f32))
                 .h(px(line_total as f32))
                 .child(text_element);
-            let mut sub_y = pad_y + line_box * main_rows as f64;
+            let mut sub_y = pad_y + row_pitch * main_rows as f64;
             for sub_rows in [&self.sub_translation_rows[index], &self.sub_roman_rows[index]] {
                 for sub_text in sub_rows {
                     content = content.child(
