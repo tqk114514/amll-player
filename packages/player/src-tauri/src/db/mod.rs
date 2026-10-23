@@ -1,14 +1,14 @@
 pub mod cleanup;
 pub mod commands;
-pub mod entity;
 pub mod migrate;
-pub mod migration;
 pub mod refresh;
 pub mod scanner;
 pub mod utils;
+// 实体与迁移已抽到 player-service crate(Tauri 与 GPUI 共用);
+// 迁移经 player_service::db::open_at 应用,此处不再直接引用
+pub use player_service::db::entity;
 
-use sea_orm::{Database, DatabaseConnection};
-use sea_orm_migration::prelude::*;
+use sea_orm::DatabaseConnection;
 use tauri::AppHandle;
 use tauri::Manager;
 use tauri::path::BaseDirectory;
@@ -26,15 +26,7 @@ pub async fn init_database(app: &AppHandle) -> Result<DatabaseConnection, String
             .map_err(|e| format!("Failed to create database directory: {e}"))?;
     }
 
-    let db_url = format!("sqlite:{}?mode=rwc", db_path.display());
-
-    let db = Database::connect(&db_url)
+    player_service::db::open_at(&db_path)
         .await
-        .map_err(|e| format!("Failed to connect to database: {e}"))?;
-
-    migration::Migrator::up(&db, None)
-        .await
-        .map_err(|e| format!("Failed to run migrations: {e}"))?;
-
-    Ok(db)
+        .map_err(|e| format!("Failed to open database: {e}"))
 }

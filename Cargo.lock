@@ -244,6 +244,7 @@ dependencies = [
  "objc2 0.6.4",
  "objc2-avf-audio",
  "objc2-foundation 0.3.2",
+ "player-service",
  "rayon",
  "reqwest 0.13.4",
  "rkyv",
@@ -3584,6 +3585,7 @@ dependencies = [
  "gpui-kit",
  "gpui-pre",
  "image",
+ "player-service",
  "serde_json",
  "tokio",
  "tracing",
@@ -6936,6 +6938,26 @@ name = "plain"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
+
+[[package]]
+name = "player-service"
+version = "0.1.0"
+dependencies = [
+ "amll-player-core",
+ "anyhow",
+ "chrono",
+ "ffmpeg_audio",
+ "jwalk",
+ "md5",
+ "rayon",
+ "sea-orm",
+ "sea-orm-migration",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "plist"

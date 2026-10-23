@@ -14,7 +14,7 @@ use crate::server::AMLLWebSocketServer;
 use crate::server::AMLLWebSocketServerWrapper;
 
 mod db;
-mod db_events;
+pub use player_service::db_events;
 #[cfg(target_os = "linux")]
 mod linux_graphics;
 mod logging;

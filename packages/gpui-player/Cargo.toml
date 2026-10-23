@@ -9,6 +9,7 @@ gpui-kit = "0.7.3"
 # 直依赖以使用 [patch.crates-io] 暴露的绘制期变换 API(TransformedElement)
 gpui-pre = "0.3.9"
 amll-player-core = { path = "../player-core" }
+player-service = { path = "../player-service" }
 ttml_processor = "0.3"
 tokio = { version = "^1", features = ["rt", "sync", "time", "macros"] }
 anyhow = "^1.0"

@@ -1,0 +1,30 @@
+[package]
+name = "player-service"
+version = "0.1.0"
+edition = "2024"
+description = "AMLL Player 的进程内服务层:曲库 DB、扫描、播放列表、播放队列与音频控制(现 Tauri 应用与 GPUI 应用共用)"
+
+[dependencies]
+amll-player-core = { path = "../player-core" }
+anyhow = "1"
+ffmpeg_audio = { version = "0.2", features = ["tracing"] }
+jwalk = "0.8"
+chrono = "0.4"
+md5 = "0.8"
+rayon = "1.12"
+sea-orm = { version = "1", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+] }
+sea-orm-migration = { version = "1", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync", "macros", "rt-multi-thread", "time"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3"

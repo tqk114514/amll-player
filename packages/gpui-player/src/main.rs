@@ -37,6 +37,7 @@ use crate::trace::{TraceScore, TraceState};
 
 fn usage() -> ! {
     eprintln!("用法: gpui-player <音频文件路径> <TTML 歌词路径>");
+    eprintln!("      gpui-player --library <音乐文件夹>(扫描入库并按队列播放)");
     eprintln!("      gpui-player --trace <out.jsonl> [--score <score.json>] [--quit-on-done] <TTML>");
     eprintln!("示例: cargo run -p gpui-player -- \"歌曲.flac\" \"歌词.ttml\"");
     eprintln!("      可选: --cover 封面.png|jpg(指定 mesh 背景取色图)");
@@ -139,6 +140,7 @@ fn main() -> anyhow::Result<()> {
     let mut score_path: Option<PathBuf> = None;
     let mut quit_on_done = false;
     let mut cover_path: Option<PathBuf> = None;
+    let mut library_dir: Option<PathBuf> = None;
     let mut paths: Vec<PathBuf> = Vec::new();
     let mut index = 1;
     while index < args.len() {
@@ -169,6 +171,14 @@ fn main() -> anyhow::Result<()> {
                     args.get(index).unwrap_or_else(|| usage()),
                 ));
             }
+            // [Phase 3] 实库模式:扫描文件夹入库,经 PlayerService
+            // 按队列播放(曲目顺序即文件枚举序)
+            "--library" => {
+                index += 1;
+                library_dir = Some(PathBuf::from(
+                    args.get(index).unwrap_or_else(|| usage()),
+                ));
+            }
             _ if !arg.starts_with('-') && std::path::Path::new(arg).exists() => {
                 paths.push(PathBuf::from(arg));
             }
@@ -176,10 +186,93 @@ fn main() -> anyhow::Result<()> {
         }
         index += 1;
     }
+    // [Phase 3] 实库模式:经 PlayerService 扫描入库并按队列播放。
+    // 当前歌曲即队列首曲——音频路径取 DB 的 file_path,歌词取扫描器
+    // 存入的 TTML 内容(同名 .ttml 伴生文件);曲库数据与播放链路
+    // 全部走服务层,Tauri 前端走的是同一份代码。
+    if let Some(library) = &library_dir {
+        let data_dir = std::env::temp_dir().join("amll-gpui-service");
+        let service = player_service::PlayerService::open(&data_dir)?;
+        let song_ids = service.scan_folder(library)?;
+        if song_ids.is_empty() {
+            anyhow::bail!("文件夹中未找到音频: {}", library.display());
+        }
+        tracing::info!("[library] 入库 {} 曲", song_ids.len());
+        // 播放队列(异步操作在服务自带的 runtime 上驱动)
+        let service_task = service.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("创建运行时失败");
+            rt.block_on(async move {
+                if let Err(e) = service_task.play_queue(song_ids, None).await {
+                    tracing::error!("[library] 启动队列失败: {e:?}");
+                }
+            });
+        });
+        // 等队列首曲开播,读取当前曲目构建歌词页
+        let first_id = loop {
+            if let Some(id) = service.current_song_id() {
+                break id;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let first = rt
+            .block_on(service.get_song(&first_id))?
+            .ok_or_else(|| anyhow::anyhow!("首曲查询失败"))?;
+        tracing::info!(
+            "[library] 当前曲目: {} - {}",
+            first.song_artists,
+            first.song_name
+        );
+        // 事件桥:服务的音频事件 → 现有事件总线形态
+        let (evt_tx, evt_rx) =
+            tokio::sync::mpsc::unbounded_channel::<amll_player_core::AudioThreadEventMessage<
+                amll_player_core::AudioThreadEvent,
+            >>();
+        let service_bus = service.clone();
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("创建运行时失败");
+            rt.block_on(async move {
+                let mut bus = service_bus.subscribe();
+                while let Ok(event) = bus.recv().await {
+                    match event {
+                        player_service::events::ServiceEvent::Audio(audio) => {
+                            let _ = evt_tx.send(
+                                amll_player_core::AudioThreadEventMessage::new(
+                                    "".into(),
+                                    Some(audio),
+                                ),
+                            );
+                        }
+                        player_service::events::ServiceEvent::TrackChanged { song_id, .. } => {
+                            // 曲目切换:Phase 4 外壳接管歌词页重建
+                            tracing::info!("[library] 切曲: {song_id}");
+                        }
+                        player_service::events::ServiceEvent::TrackEnded => {
+                            tracing::info!("[library] 曲目播完");
+                        }
+                    }
+                }
+            });
+        });
+        // 歌词:扫描器存入的 TTML 内容(无则空歌词页)
+        let ttml_content = first.lyric.clone();
+        let audio_path_lib = first.file_path.clone();
+        return run_app(Some(audio_path_lib), ttml_content, cover_path, trace_path, pixel_dir, score_path, quit_on_done, Some(service.audio_handle()), Some(evt_rx), true);
+    }
+
+    // 直连/采集模式:位置参数 = (音频, TTML) 或仅 TTML(配合 --trace)
     if paths.is_empty() || paths.len() > 2 {
         usage();
     }
-    // 位置参数:两个 = (音频, TTML);一个 = 仅 TTML(配合 --trace 做数值采集)
     let (audio_path, ttml_path) = if paths.len() == 2 {
         (Some(paths[0].clone()), paths[1].clone())
     } else if trace_path.is_some() {
@@ -191,6 +284,25 @@ fn main() -> anyhow::Result<()> {
     let ttml_bytes = std::fs::read(&ttml_path)?;
     // TTML 官方是 UTF-8;对非 UTF-8 的历史文件做有损兜底而非直接崩溃
     let ttml_content = String::from_utf8_lossy(&ttml_bytes).into_owned();
+    run_app(audio_path.map(|p| p.display().to_string()), ttml_content, cover_path, trace_path, pixel_dir, score_path, quit_on_done, None, None, false)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_app(
+    audio_path: Option<String>,
+    ttml_content: String,
+    cover_path: Option<PathBuf>,
+    trace_path: Option<PathBuf>,
+    pixel_dir: Option<PathBuf>,
+    score_path: Option<PathBuf>,
+    quit_on_done: bool,
+    // 已就绪的音频句柄(库模式由 PlayerService 提供)
+    existing_handle: Option<AudioPlayerHandle>,
+    // 已有的音频事件流(库模式由服务事件桥提供)
+    existing_evt_rx: Option<tokio::sync::mpsc::UnboundedReceiver<AudioThreadEventMessage<AudioThreadEvent>>>,
+    // 库模式标志(来自 PlayerService:既有句柄+事件流)
+    from_service: bool,
+) -> anyhow::Result<()> {
 
     // TTML → 原型行结构(词粒度,供 M4 逐词渐变)
     let parsed = ttml_processor::parse_ttml(&ttml_content)?;
@@ -241,48 +353,79 @@ fn main() -> anyhow::Result<()> {
         None => None,
     };
 
-    let (evt_tx, mut evt_rx) =
-        tokio::sync::mpsc::unbounded_channel::<AudioThreadEventMessage<AudioThreadEvent>>();
-    let (handle_tx, handle_rx) = mpsc::channel::<AudioPlayerHandle>();
-
-    // 音频线程:独立线程 + current-thread 运行时,与 src-tauri 的接线一致
-    if audio_path.is_some() {
-        std::thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("创建 Tokio 运行时失败");
-            runtime.block_on(async move {
-                let config = AudioPlayerConfig {
-                    media_controls_options: NowPlayingOptions {
-                        hwnd: None,
-                        discord: None,
-                        app_name: Some("AMLL GPUI 原型".into()),
-                    },
-                };
-                let player = match AudioPlayer::new(config, evt_tx) {
-                    Ok(player) => player,
-                    Err(e) => {
-                        tracing::error!("初始化音频设备失败: {e:?}");
-                        return;
-                    }
-                };
-                let _ = handle_tx.send(player.handler());
-                player.run().await;
-            });
-        });
-    }
-
-    // 无音频(--trace 仅 TTML)时不启动音频线程,此处不能等待空通道
-    let handle = if audio_path.is_some() {
-        handle_rx.recv().ok()
-    } else {
-        None
+    // 音频接线三分支:
+    // [库模式] PlayerService 已在播放:直接用它的句柄与事件桥,
+    //   不再自建音频线程、不重复发起播放
+    // [直连模式] 自建音频线程(独立线程 + current-thread 运行时,
+    //   与 src-tauri 的接线一致)并发起播放
+    // [采集模式] 无音频,不启动线程
+    let (handle, mut evt_rx): (
+        Option<AudioPlayerHandle>,
+        tokio::sync::mpsc::UnboundedReceiver<AudioThreadEventMessage<AudioThreadEvent>>,
+    ) = match (existing_handle, existing_evt_rx) {
+        (Some(handle), Some(rx)) => (Some(handle), rx),
+        (fallback_handle, fallback_rx) => {
+            let (evt_tx, evt_rx) =
+                tokio::sync::mpsc::unbounded_channel::<AudioThreadEventMessage<AudioThreadEvent>>();
+            let (handle_tx, handle_rx) = mpsc::channel::<AudioPlayerHandle>();
+            let has_audio = audio_path.is_some();
+            if has_audio {
+                let evt_tx = evt_tx.clone();
+                std::thread::spawn(move || {
+                    let runtime = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("创建 Tokio 运行时失败");
+                    runtime.block_on(async move {
+                        let config = AudioPlayerConfig {
+                            media_controls_options: NowPlayingOptions {
+                                hwnd: None,
+                                discord: None,
+                                app_name: Some("AMLL GPUI 原型".into()),
+                            },
+                        };
+                        let player = match AudioPlayer::new(config, evt_tx) {
+                            Ok(player) => player,
+                            Err(e) => {
+                                tracing::error!("初始化音频设备失败: {e:?}");
+                                return;
+                            }
+                        };
+                        let _ = handle_tx.send(player.handler());
+                        player.run().await;
+                    });
+                });
+            }
+            // 无音频(--trace 仅 TTML)时不启动音频线程,此处不能等待空通道
+            let handle = if has_audio {
+                handle_rx.recv().ok()
+            } else {
+                None
+            };
+            if let Some(rx) = fallback_rx {
+                // 既有事件流但无句柄(理论不可达):桥到内部通道
+                std::thread::spawn(move || {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("创建运行时失败");
+                    rt.block_on(async move {
+                        let mut rx = rx;
+                        while let Some(msg) = rx.recv().await {
+                            let _ = evt_tx.send(msg);
+                        }
+                    });
+                });
+            }
+            let _ = fallback_handle;
+            (handle, evt_rx)
+        }
     };
 
-    // 发起播放
-    if let (Some(handle), Some(audio)) = (handle.clone(), audio_path.as_ref()) {
-        let audio = audio.display().to_string();
+    // 发起播放(直连模式;库模式由服务队列驱动,跳过)
+    let start_play_path = if from_service { None } else { audio_path.clone() };
+    if let (Some(handle), Some(audio)) = (handle.clone(), start_play_path.as_ref()) {
+        let audio = audio.to_string();
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()

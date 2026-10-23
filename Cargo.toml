@@ -5,6 +5,7 @@ members = [
 	"./packages/player-core",
 	"./packages/player/src-tauri",
 	"./packages/gpui-player",
+	"./packages/player-service",
 ]
 
 [profile.release]
